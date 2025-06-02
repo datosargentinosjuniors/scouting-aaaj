@@ -4,3 +4,4 @@ matplotlib
 mplsoccer
 python-dotenv
 scikit-learn
+openpyxl
