@@ -99,6 +99,12 @@ def main():
     # 9. Valores del primer jugador
     values_1 = list(data_jugador_1[datos_radar].iloc[0].astype(float).values)
 
+    minutos_j1 = int(data_jugador_1['Minutes played'].iloc[0])  # ← Se extrae el valor de la columna
+    if data_jugador_2 is not None:
+        valores_radar_2 = list(data_jugador_2[datos_radar].iloc[0].astype(float).values)
+        minutos_j2 = int(data_jugador_2['Minutes played'].iloc[0])  # ← Se extrae el valor de la columna
+
+
     # 10. Definimos colores: jugador 1 siempre azul, jugador 2 siempre rojo
     color_j1 = '#0D3E8A'  # azul para jugador 1
     color_j2 = '#FB0B0E'  # rojo para jugador 2 (si existe)
@@ -159,11 +165,14 @@ def main():
     )
 
     # 12. Textos con nombre y equipo, usando el color correspondiente
+# 12. Textos con nombre, equipo y minutos jugados
     equipo_jugador_1 = data_jugador_1['Team within selected timeframe'].values[0]
-    texto_jugador_1 = f"{nombre_jugador_1} ({equipo_jugador_1})"
+    # **Ahora incluimos minutos_j1 en el texto**
+    texto_jugador_1 = f"{nombre_jugador_1} ({equipo_jugador_1}) ({minutos_j1} min)"
+
 
     ax.text(
-        0.05, 0.91,
+        0.05, 0.01,
         texto_jugador_1,
         weight='bold',
         fontsize=14,
@@ -175,16 +184,18 @@ def main():
 
     if data_jugador_2 is not None:
         equipo_jugador_2 = data_jugador_2['Team within selected timeframe'].values[0]
-        texto_jugador_2 = f"{nombre_jugador_2} ({equipo_jugador_2})"
+        # **Ahora incluimos minutos_j2 en el texto del segundo jugador**
+        texto_jugador_2 = f"{nombre_jugador_2} ({equipo_jugador_2}) ({minutos_j2} min)"
 
         ax.text(
-            0.05, 0.95,
+            0.95, 0.01,
             texto_jugador_2,
             weight='bold',
             fontsize=14,
             fontfamily='Verdana',
             color=color_j2,
             transform=ax.transAxes,
+            ha='right',
             bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.4')
         )
 
