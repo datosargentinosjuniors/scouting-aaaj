@@ -68,10 +68,16 @@ if os.path.exists(archivo):
     # Guardar df original para el selector de jugador
     df_original = df.copy()
 
-    # --- Selector de jugador SIEMPRE visible ---
+    # --- Selector de jugador con filtro de minutos ---
+    min_minutos_ref = st.number_input(
+        "Minutos jugados mínimos para elegir referencia:",
+        min_value=0, value=0
+    )
+    jugadores_filtrados_ref = df_original[df_original['Minutes played'] >= min_minutos_ref]['Jugador con equipo'].tolist()
+
     jugador_ref = st.selectbox(
-        "Jugador de referencia (opcional) | Este filtrado puede llegar a ser muy específico, se recomienda bajar los puntajes manteniendo la referencia:",
-        ["Sin referencia"] + df_original['Jugador con equipo'].tolist()
+        "Jugador de referencia (opcional) | Este filtrado puede ser muy específico, se recomienda bajar los puntajes manteniendo la referencia:",
+        ["Sin referencia"] + jugadores_filtrados_ref
     )
 
     # --- Filtros condicionales ---
@@ -108,7 +114,7 @@ if os.path.exists(archivo):
             df = df[df['Liga'].isin(ligas_seleccionadas)]
 
     with col3:
-        min_minutos = st.number_input("Minutos jugados mínimos:", min_value=0, value=0)
+        min_minutos = st.number_input("Minutos jugados mínimos (filtro general):", min_value=0, value=0)
         df = df[df['Minutes played'] >= min_minutos]
 
     # --- Filtros por atributos ---
@@ -121,7 +127,6 @@ if os.path.exists(archivo):
         max_val = int(df[atributo].max())
 
         if jugador_ref != "Sin referencia":
-            # Tomar el valor del jugador de df_original para evitar problemas si no está en df filtrado
             min_val = int(df_original.loc[df_original['Jugador con equipo'] == jugador_ref, atributo].iloc[0])
         else:
             min_val = min_val_global
@@ -154,26 +159,26 @@ if os.path.exists(archivo):
 
     st.dataframe(df_tabla[columnas_resultado], use_container_width=True)
 
-# --- Tablas Top 15 por atributo ---
+    # --- Tablas Top 15 por atributo ---
     st.markdown("### 🏆 Top 15 por atributo (según filtros aplicados)")
 
     for atributo in atributos:
         if atributo in df.columns and not df.empty:
             top15 = df.sort_values(by=atributo, ascending=False).head(10)
-        
+
             top15_tabla = top15.copy()
             top15_tabla = top15_tabla.rename(columns={
                 'Jugador con equipo': 'Jugador',
                 'Age': 'Edad',
                 'Passport country': 'Pasaporte'
             })
-        
+
             st.markdown(f"#### 🔹 {atributo}")
             st.dataframe(
                 top15_tabla[['Jugador', 'Edad', 'Pasaporte', 'Liga', atributo]],
                 use_container_width=True
             )
-        else:
+        elif atributo not in df.columns:
             st.warning(f"No hay datos para el atributo: {atributo}")
 
 else:
