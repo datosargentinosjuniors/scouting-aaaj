@@ -70,7 +70,7 @@ if os.path.exists(archivo):
 
     # --- Selector de jugador con filtro de minutos ---
     min_minutos_ref = st.number_input(
-        "Minutos jugados mínimos para elegir referencia:",
+        "Minutos jugados mínimos para elegir referencia (opcional):",
         min_value=0, value=0
     )
     jugadores_filtrados_ref = df_original[df_original['Minutes played'] >= min_minutos_ref]['Jugador con equipo'].tolist()
