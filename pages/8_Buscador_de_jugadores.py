@@ -70,15 +70,37 @@ if os.path.exists(archivo):
 
     # --- Selector de jugador con filtro de minutos ---
     min_minutos_ref = st.number_input(
-        "Minutos jugados mínimos para elegir referencia (opcional):",
+        "Minutos jugados mínimos para elegir referencia:",
         min_value=0, value=0
     )
     jugadores_filtrados_ref = df_original[df_original['Minutes played'] >= min_minutos_ref]['Jugador con equipo'].tolist()
 
     jugador_ref = st.selectbox(
-        "Jugador de referencia (opcional) | Este filtrado puede ser muy específico, se recomienda bajar los puntajes manteniendo la referencia:",
+        "Jugador de referencia (opcional):",
         ["Sin referencia"] + jugadores_filtrados_ref
     )
+
+    # Si se selecciona un jugador, mostrar su tabla
+    if jugador_ref != "Sin referencia":
+        atributos_display = atributos_por_puesto[puesto_seleccionado]
+        atributos_display = ['Ast. y chances' if a == 'Asistencias y creación de chances' else a for a in atributos_display]
+
+        jugador_info = df_original[df_original['Jugador con equipo'] == jugador_ref].copy()
+        jugador_info['Liga'] = jugador_info['Pais competencia'].str[:3].str.upper() + ' - ' + jugador_info['Competencia']
+
+        jugador_info = jugador_info.rename(columns={
+            'Age': 'Edad',
+            'Passport country': 'Pasaporte',
+            'Jugador con equipo': 'Jugador',
+            'Asistencias y creación de chances': 'Ast. y chances'
+        })
+
+        if 'Puntaje AAAJ' not in jugador_info.columns:
+            jugador_info['Puntaje AAAJ'] = None
+
+        columnas_jugador = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Puntaje AAAJ'] + atributos_display
+        st.markdown("#### 📌 Atributos del jugador de referencia")
+        st.dataframe(jugador_info[columnas_jugador], use_container_width=True)
 
     # --- Filtros condicionales ---
     col1, col2, col3 = st.columns(3)
@@ -101,7 +123,6 @@ if os.path.exists(archivo):
             elif extremo == "Extremo por izquierda":
                 df = df[df['Position'].str.contains('L', na=False)]
 
-            # Agregar filtro de pierna hábil para extremos
             pierna = st.selectbox("Pierna hábil:", ["Sin asignar"] + sorted(df['Foot'].dropna().unique().tolist()), key="foot_extremos")
             if pierna != "Sin asignar":
                 df = df[df['Foot'] == pierna]
@@ -123,15 +144,9 @@ if os.path.exists(archivo):
 
     sliders = {}
     for atributo in atributos:
-        min_val_global = int(df[atributo].min())
+        min_val = int(df[atributo].min())
         max_val = int(df[atributo].max())
-
-        if jugador_ref != "Sin referencia":
-            min_val = int(df_original.loc[df_original['Jugador con equipo'] == jugador_ref, atributo].iloc[0])
-        else:
-            min_val = min_val_global
-
-        sliders[atributo] = st.slider(f"{atributo}:", min_val_global, max_val, (min_val, max_val))
+        sliders[atributo] = st.slider(f"{atributo}:", min_val, max_val, (min_val, max_val))
 
     for atributo, (min_val, max_val) in sliders.items():
         df = df[df[atributo].between(min_val, max_val)]
