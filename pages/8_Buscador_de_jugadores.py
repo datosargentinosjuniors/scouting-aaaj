@@ -70,7 +70,7 @@ if os.path.exists(archivo):
 
     # --- Selector de jugador SIEMPRE visible ---
     jugador_ref = st.selectbox(
-        "Jugador de referencia (Opcional) | Este filtrado puede llegar a ser muy específico, se recomienda bajar los puntajes manteniendo la referencia):",
+        "Jugador de referencia (opcional) | Este filtrado puede llegar a ser muy específico, se recomienda bajar los puntajes manteniendo la referencia:",
         ["Sin referencia"] + df_original['Jugador con equipo'].tolist()
     )
 
