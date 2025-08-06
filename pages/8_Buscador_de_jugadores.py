@@ -155,11 +155,11 @@ if os.path.exists(archivo):
     st.dataframe(df_tabla[columnas_resultado], use_container_width=True)
 
 # --- Tablas Top 15 por atributo ---
-    st.markdown("## 🏆 Top 15 por atributo (según filtros aplicados)")
+    st.markdown("### 🏆 Top 15 por atributo (según filtros aplicados)")
 
     for atributo in atributos:
         if atributo in df.columns and not df.empty:
-            top15 = df.sort_values(by=atributo, ascending=False).head(15)
+            top15 = df.sort_values(by=atributo, ascending=False).head(10)
         
             top15_tabla = top15.copy()
             top15_tabla = top15_tabla.rename(columns={
