@@ -73,19 +73,23 @@ if os.path.exists(archivo):
         "Minutos jugados mínimos para elegir referencia:",
         min_value=0, value=0
     )
-    jugadores_filtrados_ref = df_original[df_original['Minutes played'] >= min_minutos_ref]['Jugador con equipo'].tolist()
+
+    # Filtrar df_original por minutos para referencia
+    df_ref_filtrado = df_original[df_original['Minutes played'] >= min_minutos_ref]
+
+    jugadores_filtrados_ref = df_ref_filtrado['Jugador con equipo'].tolist()
 
     jugador_ref = st.selectbox(
         "Jugador de referencia (opcional):",
         ["Sin referencia"] + jugadores_filtrados_ref
     )
 
-    # Si se selecciona un jugador, mostrar su tabla
+    # Si se selecciona un jugador, mostrar su tabla (usando el df filtrado por minutos)
     if jugador_ref != "Sin referencia":
         atributos_display = atributos_por_puesto[puesto_seleccionado]
         atributos_display = ['Ast. y chances' if a == 'Asistencias y creación de chances' else a for a in atributos_display]
 
-        jugador_info = df_original[df_original['Jugador con equipo'] == jugador_ref].copy()
+        jugador_info = df_ref_filtrado[df_ref_filtrado['Jugador con equipo'] == jugador_ref].copy()
         jugador_info['Liga'] = jugador_info['Pais competencia'].str[:3].str.upper() + ' - ' + jugador_info['Competencia']
 
         jugador_info = jugador_info.rename(columns={
@@ -175,7 +179,7 @@ if os.path.exists(archivo):
     st.dataframe(df_tabla[columnas_resultado], use_container_width=True)
 
     # --- Tablas Top 15 por atributo ---
-    st.markdown("### 🏆 Top 15 por atributo (según filtros aplicados)")
+    st.markdown("### 🏆 Top 10 por atributo (según filtros aplicados)")
 
     for atributo in atributos:
         if atributo in df.columns and not df.empty:
