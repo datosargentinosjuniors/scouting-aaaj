@@ -168,7 +168,7 @@ if os.path.exists(archivo):
                 'Passport country': 'Pasaporte'
             })
         
-            st.markdown(f"### 🔹 {atributo}")
+            st.markdown(f"#### 🔹 {atributo}")
             st.dataframe(
                 top15_tabla[['Jugador', 'Edad', 'Pasaporte', 'Liga', atributo]],
                 use_container_width=True
