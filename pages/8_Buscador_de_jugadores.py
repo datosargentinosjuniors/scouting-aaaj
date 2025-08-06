@@ -173,8 +173,8 @@ if os.path.exists(archivo):
                 top15_tabla[['Jugador', 'Edad', 'Pasaporte', 'Liga', atributo]],
                 use_container_width=True
             )
-    else:
-        st.warning(f"No hay datos para el atributo: {atributo}")
+        else:
+            st.warning(f"No hay datos para el atributo: {atributo}")
 
 else:
     st.error("No se encontró el archivo correspondiente.")
