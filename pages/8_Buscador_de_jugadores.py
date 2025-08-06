@@ -178,6 +178,8 @@ if os.path.exists(archivo):
 
     st.dataframe(df_tabla[columnas_resultado], use_container_width=True)
 
+    mapa_atributos = {'Asistencias y creación de chances': 'Ast. y chances'}
+
     # --- Tablas Top 15 por atributo ---
     st.markdown("### 🏆 Top 10 por atributo (según filtros aplicados)")
 
