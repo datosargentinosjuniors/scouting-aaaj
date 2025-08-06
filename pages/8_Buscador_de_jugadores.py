@@ -52,6 +52,11 @@ def buscar_archivo_por_puesto(puesto, carpeta="data"):
             return os.path.join(carpeta, archivo)
     return None
 
+# --- Función cacheada para cargar datos ---
+@st.cache_data
+def cargar_datos(path):
+    return pd.read_excel(path)
+
 # --- Streamlit ---
 puestos = list(atributos_por_puesto.keys())
 puesto_seleccionado = st.selectbox("Seleccioná el puesto a analizar:", puestos)
@@ -59,8 +64,8 @@ puesto_seleccionado = st.selectbox("Seleccioná el puesto a analizar:", puestos)
 archivo = buscar_archivo_por_puesto(puesto_seleccionado, carpeta="data")
 
 # --- Cargar datos ---
-if os.path.exists(archivo):
-    df = pd.read_excel(archivo)
+if archivo and os.path.exists(archivo):
+    df = cargar_datos(archivo)  # <-- ahora cacheado
 
     # Crear columna "Jugador con equipo"
     df['Jugador con equipo'] = df['Player'] + ' (' + df['Team within selected timeframe'] + ')'
@@ -185,8 +190,8 @@ if os.path.exists(archivo):
     st.markdown("### 🏆 Top 10 por atributo (según filtros aplicados)")
 
     for atributo in atributos:
-        col_df = atributo  # nombre real en df
-        nombre_mostrar = mapa_atributos.get(atributo, atributo)  # nombre en la vista
+        col_df = atributo
+        nombre_mostrar = mapa_atributos.get(atributo, atributo)
 
         if col_df in df.columns and not df.empty:
             top10 = df.sort_values(by=col_df, ascending=False).head(10)
