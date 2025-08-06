@@ -154,5 +154,27 @@ if os.path.exists(archivo):
 
     st.dataframe(df_tabla[columnas_resultado], use_container_width=True)
 
+# --- Tablas Top 15 por atributo ---
+    st.markdown("## 🏆 Top 15 por atributo (según filtros aplicados)")
+
+    for atributo in atributos:
+        if atributo in df.columns and not df.empty:
+            top15 = df.sort_values(by=atributo, ascending=False).head(15)
+        
+            top15_tabla = top15.copy()
+            top15_tabla = top15_tabla.rename(columns={
+                'Jugador con equipo': 'Jugador',
+                'Age': 'Edad',
+                'Passport country': 'Pasaporte'
+            })
+        
+            st.markdown(f"### 🔹 {atributo}")
+            st.dataframe(
+                top15_tabla[['Jugador', 'Edad', 'Pasaporte', 'Liga', atributo]],
+                use_container_width=True
+            )
+    else:
+        st.warning(f"No hay datos para el atributo: {atributo}")
+
 else:
     st.error("No se encontró el archivo correspondiente.")
