@@ -178,28 +178,35 @@ if os.path.exists(archivo):
 
     st.dataframe(df_tabla[columnas_resultado], use_container_width=True)
 
-    mapa_atributos = {'Asistencias y creación de chances': 'Ast. y chances'}
+    # Mapeo para evitar problemas entre nombres de columnas
+    mapa_atributos = {
+        'Asistencias y creación de chances': 'Ast. y chances'
+    }
 
-    # --- Tablas Top 15 por atributo ---
     st.markdown("### 🏆 Top 10 por atributo (según filtros aplicados)")
 
     for atributo in atributos:
-        if atributo in df.columns and not df.empty:
-            top15 = df.sort_values(by=atributo, ascending=False).head(10)
+        col_df = atributo  # nombre real en df
+        if atributo in mapa_atributos:
+            col_df = atributo  # en df sigue igual, solo renombramos después
 
-            top15_tabla = top15.copy()
-            top15_tabla = top15_tabla.rename(columns={
+        if col_df in df.columns and not df.empty:
+            top10 = df.sort_values(by=col_df, ascending=False).head(10)
+
+            top10_tabla = top10.copy()
+            top10_tabla = top10_tabla.rename(columns={
                 'Jugador con equipo': 'Jugador',
                 'Age': 'Edad',
-                'Passport country': 'Pasaporte'
+                'Passport country': 'Pasaporte',
+                'Asistencias y creación de chances': 'Ast. y chances'
             })
 
-            st.markdown(f"#### 🔹 {atributo}")
+            st.markdown(f"#### 🔹 {mapa_atributos.get(atributo, atributo)}")
             st.dataframe(
-                top15_tabla[['Jugador', 'Edad', 'Pasaporte', 'Liga', atributo]],
+                top10_tabla[['Jugador', 'Edad', 'Pasaporte', 'Liga', mapa_atributos.get(atributo, atributo)]],
                 use_container_width=True
             )
-        elif atributo not in df.columns:
+        else:
             st.warning(f"No hay datos para el atributo: {atributo}")
 
 else:
