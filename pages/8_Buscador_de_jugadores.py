@@ -76,7 +76,6 @@ if os.path.exists(archivo):
 
     # Filtrar df_original por minutos para referencia
     df_ref_filtrado = df_original[df_original['Minutes played'] >= min_minutos_ref]
-
     jugadores_filtrados_ref = df_ref_filtrado['Jugador con equipo'].tolist()
 
     jugador_ref = st.selectbox(
@@ -168,17 +167,17 @@ if os.path.exists(archivo):
         'Asistencias y creación de chances': 'Ast. y chances'
     })
 
-    atributos = ['Ast. y chances' if a == 'Asistencias y creación de chances' else a for a in atributos]
+    atributos_vista = ['Ast. y chances' if a == 'Asistencias y creación de chances' else a for a in atributos]
 
     if 'Puntaje AAAJ' not in df_tabla.columns:
         df_tabla['Puntaje AAAJ'] = None
 
-    columnas_resultado = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Puntaje AAAJ'] + atributos
+    columnas_resultado = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Puntaje AAAJ'] + atributos_vista
     df_tabla = df_tabla.sort_values(by='Puntaje AAAJ', ascending=False)
 
     st.dataframe(df_tabla[columnas_resultado], use_container_width=True)
 
-    # Mapeo para evitar problemas entre nombres de columnas
+    # --- Top 10 por atributo ---
     mapa_atributos = {
         'Asistencias y creación de chances': 'Ast. y chances'
     }
@@ -187,8 +186,7 @@ if os.path.exists(archivo):
 
     for atributo in atributos:
         col_df = atributo  # nombre real en df
-        if atributo in mapa_atributos:
-            col_df = atributo  # en df sigue igual, solo renombramos después
+        nombre_mostrar = mapa_atributos.get(atributo, atributo)  # nombre en la vista
 
         if col_df in df.columns and not df.empty:
             top10 = df.sort_values(by=col_df, ascending=False).head(10)
@@ -201,9 +199,9 @@ if os.path.exists(archivo):
                 'Asistencias y creación de chances': 'Ast. y chances'
             })
 
-            st.markdown(f"#### 🔹 {mapa_atributos.get(atributo, atributo)}")
+            st.markdown(f"#### 🔹 {nombre_mostrar}")
             st.dataframe(
-                top10_tabla[['Jugador', 'Edad', 'Pasaporte', 'Liga', mapa_atributos.get(atributo, atributo)]],
+                top10_tabla[['Jugador', 'Edad', 'Pasaporte', 'Liga', nombre_mostrar]],
                 use_container_width=True
             )
         else:
