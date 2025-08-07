@@ -67,7 +67,11 @@ archivo = buscar_archivo_por_puesto(puesto_seleccionado, carpeta="data")
 if archivo and os.path.exists(archivo):
     df = cargar_datos(archivo)
 
+    df['Minutes played'] = df['Minutes played'].astype(int)
+
+    # Crear columna "Liga" bien formateada, sin espacios extra
     df['Liga'] = df['Pais competencia'].str[:3].str.upper().str.strip() + ' - ' + df['Competencia'].str.strip()
+
     df['Jugador con equipo'] = df['Player'] + ' (' + df['Team within selected timeframe'] + ')'
 
     df_original = df.copy()
@@ -126,9 +130,11 @@ if archivo and os.path.exists(archivo):
 
     with col2:
         opciones_ligas = ["Sin asignar"] + sorted(df['Liga'].dropna().unique().tolist())
-        ligas_seleccionadas = st.multiselect("Liga (puede seleccionar varias):", opciones_ligas, default=["Sin asignar"])
-        if "Sin asignar" not in ligas_seleccionadas and ligas_seleccionadas:
-            df = df[df['Liga'].isin(ligas_seleccionadas)]
+        ligas_seleccionadas = st.multiselect("Liga (puede seleccionar varias):", opciones_ligas)
+
+        if ligas_seleccionadas:
+            if "Sin asignar" not in ligas_seleccionadas:
+                df = df[df['Liga'].isin(ligas_seleccionadas)]
 
     with col3:
         min_minutos = st.number_input("Minutos jugados mínimos (filtro general):", min_value=0, value=0)
