@@ -55,9 +55,7 @@ def buscar_archivo_por_puesto(puesto, carpeta="data"):
 # --- Función cacheada para cargar datos ---
 @st.cache_data
 def cargar_datos(path):
-    df = pd.read_excel(path)
-    df.rename(columns={'Minutes played': 'Minutos'}, inplace=True)
-    return df
+    return pd.read_excel(path)
 
 # --- Streamlit ---
 puestos = list(atributos_por_puesto.keys())
@@ -69,32 +67,23 @@ archivo = buscar_archivo_por_puesto(puesto_seleccionado, carpeta="data")
 if archivo and os.path.exists(archivo):
     df = cargar_datos(archivo)
 
-    # Crear columna "Jugador con equipo"
+    df['Liga'] = df['Pais competencia'].str[:3].str.upper().str.strip() + ' - ' + df['Competencia'].str.strip()
     df['Jugador con equipo'] = df['Player'] + ' (' + df['Team within selected timeframe'] + ')'
 
-    # Guardar df original para el selector de jugador
     df_original = df.copy()
 
     # --- Selector de jugador con filtro de minutos ---
-    min_minutos_ref = st.number_input(
-        "Minutos jugados mínimos para elegir referencia:",
-        min_value=0, value=0
-    )
-
-    df_ref_filtrado = df_original[df_original['Minutos'] >= min_minutos_ref]
+    min_minutos_ref = st.number_input("Minutos jugados mínimos para elegir referencia:", min_value=0, value=0)
+    df_ref_filtrado = df_original[df_original['Minutes played'] >= min_minutos_ref]
     jugadores_filtrados_ref = df_ref_filtrado['Jugador con equipo'].tolist()
 
-    jugador_ref = st.selectbox(
-        "Jugador de referencia (opcional):",
-        ["Sin referencia"] + jugadores_filtrados_ref
-    )
+    jugador_ref = st.selectbox("Jugador de referencia (opcional):", ["Sin referencia"] + jugadores_filtrados_ref)
 
     if jugador_ref != "Sin referencia":
         atributos_display = atributos_por_puesto[puesto_seleccionado]
         atributos_display = ['Ast. y chances' if a == 'Asistencias y creación de chances' else a for a in atributos_display]
 
         jugador_info = df_ref_filtrado[df_ref_filtrado['Jugador con equipo'] == jugador_ref].copy()
-        jugador_info['Liga'] = jugador_info['Pais competencia'].str[:3].str.upper() + ' - ' + jugador_info['Competencia']
 
         jugador_info = jugador_info.rename(columns={
             'Age': 'Edad',
@@ -106,7 +95,7 @@ if archivo and os.path.exists(archivo):
         if 'Puntaje AAAJ' not in jugador_info.columns:
             jugador_info['Puntaje AAAJ'] = None
 
-        columnas_jugador = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Puntaje AAAJ', 'Minutos'] + atributos_display
+        columnas_jugador = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Puntaje AAAJ'] + atributos_display
         st.markdown("#### 📌 Atributos del jugador de referencia")
         st.dataframe(jugador_info[columnas_jugador], use_container_width=True)
 
@@ -136,7 +125,6 @@ if archivo and os.path.exists(archivo):
                 df = df[df['Foot'] == pierna]
 
     with col2:
-        df['Liga'] = df['Pais competencia'].str[:3].str.upper() + ' - ' + df['Competencia']
         opciones_ligas = ["Sin asignar"] + sorted(df['Liga'].dropna().unique().tolist())
         ligas_seleccionadas = st.multiselect("Liga (puede seleccionar varias):", opciones_ligas, default=["Sin asignar"])
         if "Sin asignar" not in ligas_seleccionadas and ligas_seleccionadas:
@@ -144,7 +132,7 @@ if archivo and os.path.exists(archivo):
 
     with col3:
         min_minutos = st.number_input("Minutos jugados mínimos (filtro general):", min_value=0, value=0)
-        df = df[df['Minutos'] >= min_minutos]
+        df = df[df['Minutes played'] >= min_minutos]
 
     # --- Filtros por atributos ---
     atributos = atributos_por_puesto[puesto_seleccionado]
@@ -163,13 +151,12 @@ if archivo and os.path.exists(archivo):
     st.markdown("### 🧾 Jugadores que cumplen con los criterios")
 
     df_tabla = df.copy()
-    df_tabla['Liga'] = df_tabla['Pais competencia'].str[:3].str.upper() + ' - ' + df_tabla['Competencia']
-
     df_tabla = df_tabla.rename(columns={
         'Age': 'Edad',
         'Passport country': 'Pasaporte',
         'Jugador con equipo': 'Jugador',
-        'Asistencias y creación de chances': 'Ast. y chances'
+        'Asistencias y creación de chances': 'Ast. y chances',
+        'Minutes played': 'Minutos'
     })
 
     atributos_vista = ['Ast. y chances' if a == 'Asistencias y creación de chances' else a for a in atributos]
@@ -177,25 +164,19 @@ if archivo and os.path.exists(archivo):
     if 'Puntaje AAAJ' not in df_tabla.columns:
         df_tabla['Puntaje AAAJ'] = None
 
-    columnas_resultado = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Puntaje AAAJ', 'Minutos'] + atributos_vista
+    columnas_resultado = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Minutos', 'Puntaje AAAJ'] + atributos_vista
     df_tabla = df_tabla.sort_values(by='Puntaje AAAJ', ascending=False)
 
     st.dataframe(df_tabla[columnas_resultado], use_container_width=True)
 
     # --- Top 10 por atributo ---
-    mapa_atributos = {
-        'Asistencias y creación de chances': 'Ast. y chances'
-    }
-
     st.markdown("### 🏆 Top 10 por atributo (según filtros aplicados)")
-
     for atributo in atributos:
         col_df = atributo
-        nombre_mostrar = mapa_atributos.get(atributo, atributo)
+        nombre_mostrar = 'Ast. y chances' if atributo == 'Asistencias y creación de chances' else atributo
 
         if col_df in df.columns and not df.empty:
             top10 = df.sort_values(by=col_df, ascending=False).head(10)
-
             top10_tabla = top10.copy()
             top10_tabla = top10_tabla.rename(columns={
                 'Jugador con equipo': 'Jugador',
@@ -206,10 +187,11 @@ if archivo and os.path.exists(archivo):
 
             st.markdown(f"#### 🔹 {nombre_mostrar}")
             st.dataframe(
-                top10_tabla[['Jugador', 'Edad', 'Pasaporte', 'Liga', nombre_mostrar, 'Minutos']],
+                top10_tabla[['Jugador', 'Edad', 'Pasaporte', 'Liga', nombre_mostrar]],
                 use_container_width=True
             )
         else:
             st.warning(f"No hay datos para el atributo: {atributo}")
+
 else:
     st.error("No se encontró el archivo correspondiente.")
