@@ -126,7 +126,13 @@ if archivo and os.path.exists(archivo):
 
             pierna = st.selectbox("Pierna hábil:", ["Sin asignar"] + sorted(df['Foot'].dropna().unique().tolist()), key="foot_extremos")
             if pierna != "Sin asignar":
+
                 df = df[df['Foot'] == pierna]
+
+    
+    with col3:
+        min_minutos = st.number_input("Minutos jugados mínimos (filtro general):", min_value=0, value=0)
+        df = df[df['Minutes played'] >= min_minutos]
 
     with col2:
         opciones_ligas = ["Sin asignar"] + sorted(df['Liga'].dropna().unique().tolist())
@@ -136,9 +142,7 @@ if archivo and os.path.exists(archivo):
             if "Sin asignar" not in ligas_seleccionadas:
                 df = df[df['Liga'].isin(ligas_seleccionadas)]
 
-    with col3:
-        min_minutos = st.number_input("Minutos jugados mínimos (filtro general):", min_value=0, value=0)
-        df = df[df['Minutes played'] >= min_minutos]
+    
 
     # --- Filtros por atributos ---
     atributos = atributos_por_puesto[puesto_seleccionado]
