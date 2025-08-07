@@ -56,7 +56,7 @@ def buscar_archivo_por_puesto(puesto, carpeta="data"):
 @st.cache_data
 def cargar_datos(path):
     df = pd.read_excel(path)
-    df['Minutes played'] = df['Minutes played'].round().astype(int)  # <<<<<< FIX aplicado acá
+    df['Minutes played'] = pd.to_numeric(df['Minutes played'], errors='coerce').fillna(0).astype(int)
     return df
 
 # --- Streamlit ---
@@ -158,6 +158,9 @@ if archivo and os.path.exists(archivo):
 
     for atributo, (min_val, max_val) in sliders.items():
         df = df[df[atributo].between(min_val, max_val)]
+
+    st.write("✅ Coates luego de filtro minutos:", df[df['Player'].str.contains("Coates", na=False)][['Player', 'Minutes played']])
+
 
     # --- Tabla final ---
     st.markdown("### 🧾 Jugadores que cumplen con los criterios")
