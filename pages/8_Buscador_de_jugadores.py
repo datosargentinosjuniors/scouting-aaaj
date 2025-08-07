@@ -65,7 +65,16 @@ archivo = buscar_archivo_por_puesto(puesto_seleccionado, carpeta="data")
 
 # --- Cargar datos ---
 if archivo and os.path.exists(archivo):
-    df = cargar_datos(archivo)  # <-- ahora cacheado
+    df = cargar_datos(archivo)
+
+    # 🔧 FORZAMOS A NÚMERO 'Minutes played'
+    df['Minutes played'] = pd.to_numeric(df['Minutes played'], errors='coerce')
+
+    # 🔧 Forzamos los atributos del puesto a numérico
+    atributos = atributos_por_puesto[puesto_seleccionado]
+    for atributo in atributos:
+        df[atributo] = pd.to_numeric(df[atributo], errors='coerce')
+  # <-- ahora cacheado
 
     # Crear columna "Jugador con equipo"
     df['Jugador con equipo'] = df['Player'] + ' (' + df['Team within selected timeframe'] + ')'
