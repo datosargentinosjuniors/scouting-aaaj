@@ -38,10 +38,11 @@ atributos_por_puesto = {
     ]
 }
 
-# --- Funciones ---
+# --- Función para normalizar texto ---
 def normalizar(texto):
     return texto.replace(" ", "").lower()
 
+# --- Buscar archivo que contenga el nombre del puesto normalizado ---
 def buscar_archivo_por_puesto(puesto, carpeta="data"):
     puesto_norm = normalizar(puesto)
     archivos = os.listdir(carpeta)
@@ -51,6 +52,7 @@ def buscar_archivo_por_puesto(puesto, carpeta="data"):
             return os.path.join(carpeta, archivo)
     return None
 
+# --- Función cacheada para cargar datos ---
 @st.cache_data
 def cargar_datos(path):
     return pd.read_excel(path)
@@ -58,25 +60,34 @@ def cargar_datos(path):
 # --- Streamlit ---
 puestos = list(atributos_por_puesto.keys())
 puesto_seleccionado = st.selectbox("Seleccioná el puesto a analizar:", puestos)
+
 archivo = buscar_archivo_por_puesto(puesto_seleccionado, carpeta="data")
 
 if archivo and os.path.exists(archivo):
     df = cargar_datos(archivo)
     df['Jugador con equipo'] = df['Player'] + ' (' + df['Team within selected timeframe'] + ')'
+    df['Liga'] = df['Pais competencia'].str[:3].str.upper() + ' - ' + df['Competencia']
+
     df_original = df.copy()
 
-    # --- Referencia ---
-    min_minutos_ref = st.number_input("Minutos jugados mínimos para elegir referencia:", min_value=0, value=0)
+    min_minutos_ref = st.number_input(
+        "Minutos jugados mínimos para elegir referencia:",
+        min_value=0, value=0
+    )
+
     df_ref_filtrado = df_original[df_original['Minutes played'] >= min_minutos_ref]
     jugadores_filtrados_ref = df_ref_filtrado['Jugador con equipo'].tolist()
 
-    jugador_ref = st.selectbox("Jugador de referencia (opcional):", ["Sin referencia"] + jugadores_filtrados_ref)
+    jugador_ref = st.selectbox(
+        "Jugador de referencia (opcional):",
+        ["Sin referencia"] + jugadores_filtrados_ref
+    )
 
     if jugador_ref != "Sin referencia":
         atributos_display = atributos_por_puesto[puesto_seleccionado]
         atributos_display = ['Ast. y chances' if a == 'Asistencias y creación de chances' else a for a in atributos_display]
-        jugador_info = df_ref_filtrado[df_ref_filtrado['Jugador con equipo'] == jugador_ref].copy()
 
+        jugador_info = df_ref_filtrado[df_ref_filtrado['Jugador con equipo'] == jugador_ref].copy()
         jugador_info = jugador_info.rename(columns={
             'Age': 'Edad',
             'Passport country': 'Pasaporte',
@@ -87,7 +98,7 @@ if archivo and os.path.exists(archivo):
         if 'Puntaje AAAJ' not in jugador_info.columns:
             jugador_info['Puntaje AAAJ'] = None
 
-        columnas_jugador = ['Jugador', 'Edad', 'Pasaporte', 'Pais competencia', 'Puntaje AAAJ'] + atributos_display
+        columnas_jugador = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Puntaje AAAJ'] + atributos_display
         st.markdown("#### 📌 Atributos del jugador de referencia")
         st.dataframe(jugador_info[columnas_jugador], use_container_width=True)
 
@@ -111,33 +122,39 @@ if archivo and os.path.exists(archivo):
                 df = df[df['Position'].str.contains('R', na=False)]
             elif extremo == "Extremo por izquierda":
                 df = df[df['Position'].str.contains('L', na=False)]
+
             pierna = st.selectbox("Pierna hábil:", ["Sin asignar"] + sorted(df['Foot'].dropna().unique().tolist()), key="foot_extremos")
             if pierna != "Sin asignar":
                 df = df[df['Foot'] == pierna]
 
     with col2:
-        paises = ["Sin asignar"] + sorted(df['Pais competencia'].dropna().unique().tolist())
-        paises_seleccionados = st.multiselect("País competencia:", paises, default=["Sin asignar"])
-        if "Sin asignar" not in paises_seleccionados and paises_seleccionados:
-            df = df[df['Pais competencia'].isin(paises_seleccionados)]
+        opciones_ligas = ["Sin asignar"] + sorted(df['Liga'].dropna().unique().tolist())
+        ligas_seleccionadas = st.multiselect("Liga (puede seleccionar varias):", opciones_ligas, default=["Sin asignar"])
+        if "Sin asignar" not in ligas_seleccionadas and ligas_seleccionadas:
+            df = df[df['Liga'].isin(ligas_seleccionadas)]
 
     with col3:
         min_minutos = st.number_input("Minutos jugados mínimos (filtro general):", min_value=0, value=0)
-        df = df[df['Minutes played'] >= min_minutos]
 
-    # --- Sliders ---
+    # Aplicar filtro de minutos *después* de todos los demás filtros
+    df = df[df['Minutes played'] >= min_minutos]
+
+    # --- Filtros por atributos ---
     atributos = atributos_por_puesto[puesto_seleccionado]
     st.markdown("### 📊 Filtros por atributos específicos del puesto")
+
     sliders = {}
     for atributo in atributos:
         min_val = int(df[atributo].min())
         max_val = int(df[atributo].max())
         sliders[atributo] = st.slider(f"{atributo}:", min_val, max_val, (min_val, max_val))
+
     for atributo, (min_val, max_val) in sliders.items():
         df = df[df[atributo].between(min_val, max_val)]
 
     # --- Tabla final ---
-    st.markdown("### 📜 Jugadores que cumplen con los criterios")
+    st.markdown("### 🧾 Jugadores que cumplen con los criterios")
+
     df_tabla = df.copy()
     df_tabla = df_tabla.rename(columns={
         'Age': 'Edad',
@@ -147,11 +164,13 @@ if archivo and os.path.exists(archivo):
     })
 
     atributos_vista = ['Ast. y chances' if a == 'Asistencias y creación de chances' else a for a in atributos]
+
     if 'Puntaje AAAJ' not in df_tabla.columns:
         df_tabla['Puntaje AAAJ'] = None
 
-    columnas_resultado = ['Jugador', 'Edad', 'Pasaporte', 'Pais competencia', 'Puntaje AAAJ'] + atributos_vista
+    columnas_resultado = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Puntaje AAAJ', 'Minutes played'] + atributos_vista
     df_tabla = df_tabla.sort_values(by='Puntaje AAAJ', ascending=False)
+
     st.dataframe(df_tabla[columnas_resultado], use_container_width=True)
 
     # --- Top 10 por atributo ---
@@ -160,11 +179,14 @@ if archivo and os.path.exists(archivo):
     }
 
     st.markdown("### 🏆 Top 10 por atributo (según filtros aplicados)")
+
     for atributo in atributos:
         col_df = atributo
         nombre_mostrar = mapa_atributos.get(atributo, atributo)
+
         if col_df in df.columns and not df.empty:
             top10 = df.sort_values(by=col_df, ascending=False).head(10)
+
             top10_tabla = top10.copy()
             top10_tabla = top10_tabla.rename(columns={
                 'Jugador con equipo': 'Jugador',
@@ -172,12 +194,14 @@ if archivo and os.path.exists(archivo):
                 'Passport country': 'Pasaporte',
                 'Asistencias y creación de chances': 'Ast. y chances'
             })
+
             st.markdown(f"#### 🔹 {nombre_mostrar}")
             st.dataframe(
-                top10_tabla[['Jugador', 'Edad', 'Pasaporte', 'Pais competencia', nombre_mostrar]],
+                top10_tabla[['Jugador', 'Edad', 'Pasaporte', 'Liga', nombre_mostrar]],
                 use_container_width=True
             )
         else:
             st.warning(f"No hay datos para el atributo: {atributo}")
+
 else:
     st.error("No se encontró el archivo correspondiente.")
