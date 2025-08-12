@@ -6,7 +6,7 @@ import re
 
 # --- Configuración inicial ---
 st.set_page_config(page_title="Buscador por perfil", layout="wide")
-st.title("🎯 Buscador de jugadores por perfil")
+st.title("🎯 Buscador por perfil — Puntaje personalizado")
 
 # --- Mapas de atributos por puesto ---
 atributos_por_puesto = {
@@ -71,6 +71,17 @@ def asegurar_col(df: pd.DataFrame, col: str, valor=np.nan):
 def to_num(s):
     return pd.to_numeric(s, errors="coerce")
 
+def minmax_scale(series: pd.Series):
+    """Escala a [0,1]; si todo NaN o max==min, devuelve 0."""
+    s = to_num(series).astype(float)
+    if s.notna().sum() == 0:
+        return pd.Series(0.0, index=s.index)
+    mn = s.min(skipna=True)
+    mx = s.max(skipna=True)
+    if mx == mn:
+        return pd.Series(0.0, index=s.index)
+    return (s - mn) / (mx - mn)
+
 # --- App ---
 puestos = list(atributos_por_puesto.keys())
 puesto_seleccionado = st.selectbox("Seleccioná el puesto a analizar:", puestos)
@@ -87,12 +98,13 @@ if archivo and os.path.exists(archivo):
         'Age', 'Passport country'
     ]
     for c in obligatorias:
-        asegurar_col(df0, c, "" if c in [
-            'Player','Team within selected timeframe','Pais competencia','Competencia',
-            'Position','Foot','Passport country'
-        ] else np.nan)
+        asegurar_col(
+            df0, c,
+            "" if c in ['Player','Team within selected timeframe','Pais competencia','Competencia','Position','Foot','Passport country']
+            else np.nan
+        )
 
-    # Limpieza básica y derivadas (una sola vez)
+    # Derivadas/limpieza
     df0['Player'] = df0['Player'].fillna("").astype(str)
     df0['Team within selected timeframe'] = df0['Team within selected timeframe'].fillna("").astype(str)
     df0['Pais competencia'] = df0['Pais competencia'].fillna("").astype(str)
@@ -100,57 +112,21 @@ if archivo and os.path.exists(archivo):
     df0['Liga'] = df0['Pais competencia'] + ' - ' + df0['Competencia']
     df0['Jugador con equipo'] = df0['Player'] + ' (' + df0['Team within selected timeframe'] + ')'
 
-    # 👇 USAR DIRECTO tus minutos totales por jugador
+    # 👇 Importante: usar directamente tus minutos totales por jugador
     df0['Minutos'] = to_num(df0['Minutes played']).fillna(0)
 
-    # Puntaje AAAJ (float con NaN) — si lo necesitás para orden por defecto
-    if 'Puntaje AAAJ' not in df0.columns:
-        df0['Puntaje AAAJ'] = np.nan
-    else:
-        df0['Puntaje AAAJ'] = to_num(df0['Puntaje AAAJ'])
-
-    # --- Jugador de referencia (filtra por MINUTOS DIRECTOS) ---
-    st.markdown("#### 👤 Jugador de referencia")
-    col_ref1, col_ref2 = st.columns([1,2])
-    with col_ref1:
-        min_min_ref = st.number_input(
-            "Minutos mínimos para poder elegirlo:",
-            min_value=0, value=0, step=50, key="min_ref"
-        )
-    df_ref = df0[df0['Minutos'] >= min_min_ref]
-    jugadores_filtrados_ref = df_ref['Jugador con equipo'].dropna().unique().tolist()
-    with col_ref2:
-        jugador_ref = st.selectbox("Jugador de referencia:", ["Sin referencia"] + jugadores_filtrados_ref, key="jug_ref")
-
-    if jugador_ref != "Sin referencia":
-        atributos_display = [
-            'Ast. y chances' if a == 'Asistencias y creación de chances' else a
-            for a in atributos_por_puesto[puesto_seleccionado]
-        ]
-        jugador_info = df_ref[df_ref['Jugador con equipo'] == jugador_ref].copy()
-        jugador_info = jugador_info.rename(columns={
-            'Age': 'Edad',
-            'Passport country': 'Pasaporte',
-            'Jugador con equipo': 'Jugador',
-            'Asistencias y creación de chances': 'Ast. y chances'
-        })
-        asegurar_col(jugador_info, 'Puntaje AAAJ', np.nan)
-        cols = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Puntaje AAAJ', 'Minutos'] + atributos_display
-        cols = [c for c in cols if c in jugador_info.columns]
-        st.dataframe(jugador_info[cols], use_container_width=True)
-
     # ======================
-    #    FILTROS GLOBALES
+    #    FILTROS GENERALES
     # ======================
     st.markdown("### 🧰 Filtros generales")
     colA, colB, colC = st.columns(3)
 
-    # 1) Minutos por jugador — PRIMERO (directo)
+    # 1) Minutos totales por jugador (directo de tu Excel)
     with colA:
-        min_minutos = st.number_input("Minutos mínimos:", min_value=0, value=0, step=50, key="min_gen")
+        min_minutos = st.number_input("Minutos mínimos (por jugador):", min_value=0, value=0, step=50, key="min_gen")
     df = df0[df0['Minutos'] >= min_minutos].copy()
 
-    # 2) Liga (opción 'Todas' no filtra)
+    # 2) Liga
     with colB:
         opciones_ligas = ["Todas"] + sorted(df['Liga'].dropna().unique().tolist())
         ligas_sel = st.multiselect("Liga (puede seleccionar varias):", opciones_ligas, default=["Todas"], key="ligas")
@@ -183,91 +159,82 @@ if archivo and os.path.exists(archivo):
                 df = df[df['Foot'] == pierna_ext]
 
     # ======================
-    #   FILTROS POR ATRIBUTO
+    #   ATRIBUTOS + PONDERACIÓN
     # ======================
-    st.markdown("### 📊 Filtros por atributos del puesto")
+    st.markdown("### ⚖️ Selección de métricas y pesos")
     atributos = atributos_por_puesto[puesto_seleccionado]
 
-    sliders = {}
-    for atributo in atributos:
+    with st.expander("Opciones de normalización", expanded=False):
+        usar_normalizacion = st.checkbox(
+            "Normalizar métricas a [0,1] (min–max por atributo, basado en el conjunto actual)",
+            value=True
+        )
+        st.caption("Recomendado para que los pesos sean comparables entre métricas con escalas distintas.")
+
+    # UI de activación + peso
+    pesos = {}
+    activos = []
+
+    cols_attr = st.columns(2)
+    for i, atributo in enumerate(atributos):
         if atributo not in df.columns:
             st.warning(f"Falta la columna: **{atributo}** en el dataset.")
             continue
-        serie = to_num(df[atributo])
-        validos = serie.dropna()
-        if validos.empty:
-            st.info(f"No hay valores numéricos para **{atributo}** en el subconjunto actual.")
-            continue
-        min_val = float(validos.min())
-        max_val = float(validos.max())
-        if np.isfinite(min_val) and np.isfinite(max_val) and min_val <= max_val:
-            rango = st.slider(
-                f"{atributo}:",
-                value=(float(min_val), float(max_val)),
-                min_value=float(min_val),
-                max_value=float(max_val),
-                key=f"sl_{normalizar_basico(atributo)}"
-            )
-            sliders[atributo] = rango
+        cont = cols_attr[i % 2]
+        with cont:
+            fila = st.container(border=True)
+            with fila:
+                activo = st.checkbox(f"Usar **{atributo}**", value=False, key=f"cb_{normalizar_basico(atributo)}")
+                if activo:
+                    peso = st.number_input(
+                        f"Peso (0–1) para {atributo}",
+                        min_value=0.0, max_value=1.0, value=1.0, step=0.05,
+                        key=f"w_{normalizar_basico(atributo)}"
+                    )
+                    activos.append(atributo)
+                    pesos[atributo] = float(peso)
 
-    for atributo, (lo, hi) in sliders.items():
-        if atributo in df.columns and lo < hi:
-            df = df[to_num(df[atributo]).between(lo, hi, inclusive='both')]
+    # Cálculo del puntaje
+    if activos:
+        # construir columnas escaladas
+        for atributo in activos:
+            col_scaled = f"{atributo}__scaled"
+            if usar_normalizacion:
+                df[col_scaled] = minmax_scale(df[atributo]).fillna(0.0)
+            else:
+                df[col_scaled] = to_num(df[atributo]).fillna(0.0).astype(float)
+
+        scaled_cols = [f"{a}__scaled" for a in activos]
+        X = df[scaled_cols].to_numpy(dtype=float, copy=False)                # n_filas x n_metricas
+        w = np.array([pesos[a] for a in activos], dtype=float).reshape(-1, 1)  # n_metricas x 1
+        df['Puntaje personalizado'] = (X @ w).ravel()
+        df['Puntaje personalizado'] = np.round((X @ w).ravel() * 100, 2)
+    else:
+        df['Puntaje personalizado'] = np.nan
 
     # ======================
     #         TABLA
     # ======================
-    st.markdown("### 🧾 Jugadores que cumplen con los criterios")
+    st.markdown("### 🧾 Resultados (solo métricas activadas)")
     df_tabla = df.copy()
-    asegurar_col(df_tabla, 'Puntaje AAAJ', np.nan)
-    df_tabla = df_tabla.rename(columns={
-        'Age': 'Edad',
-        'Passport country': 'Pasaporte',
-        'Jugador con equipo': 'Jugador',
-        'Asistencias y creación de chances': 'Ast. y chances'
-    })
-    atributos_vista = ['Ast. y chances' if a == 'Asistencias y creación de chances' else a for a in atributos]
-    columnas_resultado = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Puntaje AAAJ', 'Minutos'] + \
-                         [c for c in atributos_vista if c in df_tabla.columns]
 
-    df_tabla = df_tabla.sort_values(by='Puntaje AAAJ', ascending=False, na_position='last')
+    base_cols = ['Jugador con equipo', 'Age', 'Passport country', 'Liga', 'Minutos']
+    rename_map = {'Jugador con equipo': 'Jugador', 'Age': 'Edad', 'Passport country': 'Pasaporte'}
+    df_tabla = df_tabla.rename(columns=rename_map)
+
+    cols_metricas = [a for a in activos if a in df_tabla.columns]
+    if activos:
+        df_tabla = df_tabla.sort_values(by='Puntaje personalizado', ascending=False, na_position='last')
+
+    columnas_resultado = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Minutos']
+    if activos:
+        columnas_resultado += cols_metricas + ['Puntaje personalizado']
+    columnas_resultado = [c for c in columnas_resultado if c in df_tabla.columns]
 
     if not df_tabla.empty:
         st.dataframe(df_tabla[columnas_resultado], use_container_width=True)
     else:
         st.warning("No hay jugadores que cumplan con los filtros seleccionados.")
-
-    # ======================
-    #    TOP 10 POR ATRIBUTO
-    # ======================
-    st.markdown("### 🏆 Top 10 por atributo (según filtros aplicados)")
-    mapa_atributos = {'Asistencias y creación de chances': 'Ast. y chances'}
-
-    if df.empty:
-        st.info("No se pueden calcular Top 10 porque no hay datos tras los filtros.")
-    else:
-        for atributo in atributos:
-            col_df = atributo
-            nombre_mostrar = mapa_atributos.get(atributo, atributo)
-            if col_df in df.columns:
-                serie = to_num(df[col_df])
-                if serie.dropna().empty:
-                    st.info(f"Sin valores numéricos para **{nombre_mostrar}**.")
-                    continue
-
-                top10 = df.sort_values(by=col_df, ascending=False, na_position='last').head(10).copy()
-                top10 = top10.rename(columns={
-                    'Jugador con equipo': 'Jugador',
-                    'Age': 'Edad',
-                    'Passport country': 'Pasaporte',
-                    'Asistencias y creación de chances': 'Ast. y chances'
-                })
-                cols_top = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Minutos', nombre_mostrar]
-                cols_top = [c for c in cols_top if c in top10.columns]
-                st.markdown(f"#### 🔹 {nombre_mostrar}")
-                st.dataframe(top10[cols_top], use_container_width=True)
-            else:
-                st.warning(f"No hay datos para el atributo: {atributo}")
 
 else:
     st.error("No se encontró el archivo correspondiente para el puesto seleccionado o la carpeta 'data' no existe.")
