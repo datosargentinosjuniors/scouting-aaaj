@@ -186,7 +186,7 @@ if archivo and os.path.exists(archivo):
     # ======================
     #   ATRIBUTOS + PONDERACIÓN
     # ======================
-    st.markdown("### ⚖️ Selección de métricas y pesos")
+    st.markdown("### ⚖️ Selección de atributos y pesos")
     atributos = atributos_por_puesto[puesto_seleccionado]
 
     with st.expander("Opciones de normalización", expanded=False):
