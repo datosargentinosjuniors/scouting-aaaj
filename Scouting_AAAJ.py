@@ -52,7 +52,7 @@ st.markdown("""
 #  Cuadro de actualización de bases
 # ==============================
 
-st.markdown("###### 📅 Actualización de bases de datos por puesto")
+st.markdown("#### 📅 Actualización de bases de datos por puesto")
 
 puestos = [
     "Defensores centrales",
@@ -82,3 +82,9 @@ for p in puestos:
         placeholder="DD/MM/AAAA"
     )
 
+# Mostramos la tabla final
+df_actualizacion["Fecha última actualización"] = [
+    st.session_state.fechas_actualizacion[p] for p in puestos
+]
+
+st.dataframe(df_actualizacion, use_container_width=True)
