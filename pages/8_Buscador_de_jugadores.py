@@ -71,6 +71,18 @@ def asegurar_col(df: pd.DataFrame, col: str, valor=np.nan):
 def to_num(s):
     return pd.to_numeric(s, errors="coerce")
 
+def parse_passports(x) -> list:
+    """
+    Convierte 'Argentina, Paraguay' -> ['Argentina','Paraguay'].
+    Maneja NaN y espacios.
+    """
+    if pd.isna(x):
+        return []
+    s = str(x).strip()
+    if not s or s.lower() == 'nan':
+        return []
+    return [p.strip() for p in s.split(',') if p.strip()]
+
 # --- App ---
 puestos = list(atributos_por_puesto.keys())
 puesto_seleccionado = st.selectbox("Seleccioná el puesto a analizar:", puestos)
@@ -99,11 +111,15 @@ if archivo and os.path.exists(archivo):
     df0['Competencia'] = df0['Competencia'].fillna("").astype(str)
     df0['Liga'] = df0['Pais competencia'] + ' - ' + df0['Competencia']
     df0['Jugador con equipo'] = df0['Player'] + ' (' + df0['Team within selected timeframe'] + ')'
-
-    # 👇 USAR DIRECTO tus minutos totales por jugador
     df0['Minutos'] = to_num(df0['Minutes played']).fillna(0)
 
-    # Puntaje AAAJ (float con NaN) — si lo necesitás para orden por defecto
+    # Parseo de pasaportes para filtro "is in"
+    df0['Pasaportes_list'] = df0['Passport country'].apply(parse_passports)
+
+    # Conjunto único de pasaportes (explota la lista)
+    all_passports = sorted(set(p for lst in df0['Pasaportes_list'] for p in lst))
+
+    # Puntaje AAAJ (float con NaN) — si lo usás para ordenar por defecto
     if 'Puntaje AAAJ' not in df0.columns:
         df0['Puntaje AAAJ'] = np.nan
     else:
@@ -143,7 +159,8 @@ if archivo and os.path.exists(archivo):
     #    FILTROS GLOBALES
     # ======================
     st.markdown("### 🧰 Filtros generales")
-    colA, colB, colC = st.columns(3)
+    # 👉 Ahora 4 columnas: Minutos, Liga, Pasaporte, Puesto/Pierna
+    colA, colB, colC, colD = st.columns(4)
 
     # 1) Minutos por jugador — PRIMERO (directo)
     with colA:
@@ -157,8 +174,17 @@ if archivo and os.path.exists(archivo):
         if ligas_sel and "Todas" not in ligas_sel:
             df = df[df['Liga'].isin(ligas_sel)]
 
-    # 3) Puesto/posición/pierna
+    # 3) Pasaporte (is in; opción 'Todos' no filtra)
     with colC:
+        opciones_pas = ["Todos"] + all_passports
+        pas_sel = st.multiselect("Pasaporte (uno o más):", opciones_pas, default=["Todos"], key="pasaportes")
+        if pas_sel and "Todos" not in pas_sel:
+            sel = set(pas_sel)
+            mask = df['Pasaportes_list'].apply(lambda lst: any(p in sel for p in lst) if isinstance(lst, list) else False)
+            df = df[mask]
+
+    # 4) Puesto/posición/pierna
+    with colD:
         if puesto_seleccionado not in ["Laterales", "Extremos"]:
             opciones_pie = ["Cualquiera"] + sorted([x for x in df['Foot'].dropna().unique().tolist() if x != ""])
             pierna = st.selectbox("Pierna hábil:", opciones_pie, key="pie_general")
@@ -183,7 +209,7 @@ if archivo and os.path.exists(archivo):
                 df = df[df['Foot'] == pierna_ext]
 
     # ======================
-    #   FILTROS POR ATRIBUTO
+    #   Filtros por atributo
     # ======================
     st.markdown("### 📊 Filtros por atributos del puesto")
     atributos = atributos_por_puesto[puesto_seleccionado]

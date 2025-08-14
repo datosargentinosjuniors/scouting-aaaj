@@ -82,6 +82,24 @@ def minmax_scale(series: pd.Series):
         return pd.Series(0.0, index=s.index)
     return (s - mn) / (mx - mn)
 
+def parse_passports(x) -> list:
+    """Convierte 'Argentina, Paraguay' -> ['Argentina','Paraguay'] (robusto a ';')."""
+    if pd.isna(x):
+        return []
+    s = str(x).strip()
+    if not s or s.lower() == 'nan':
+        return []
+    s = s.replace(';', ',')
+    return [p.strip() for p in s.split(',') if p.strip()]
+
+# --- Estado global para confirmación ---
+if 'pesos_confirmados' not in st.session_state:
+    st.session_state.pesos_confirmados = False
+if 'suma_pesos_confirmada' not in st.session_state:
+    st.session_state.suma_pesos_confirmada = 0.0
+if 'firma_pesos' not in st.session_state:
+    st.session_state.firma_pesos = ""
+
 # --- App ---
 puestos = list(atributos_por_puesto.keys())
 puesto_seleccionado = st.selectbox("Seleccioná el puesto a analizar:", puestos)
@@ -111,50 +129,57 @@ if archivo and os.path.exists(archivo):
     df0['Competencia'] = df0['Competencia'].fillna("").astype(str)
     df0['Liga'] = df0['Pais competencia'] + ' - ' + df0['Competencia']
     df0['Jugador con equipo'] = df0['Player'] + ' (' + df0['Team within selected timeframe'] + ')'
-
-    # 👇 Importante: usar directamente tus minutos totales por jugador
     df0['Minutos'] = to_num(df0['Minutes played']).fillna(0)
+
+    # Pasaportes
+    df0['Pasaportes_list'] = df0['Passport country'].apply(parse_passports)
+    all_passports = sorted(set(p for lst in df0['Pasaportes_list'] for p in lst))
 
     # ======================
     #    FILTROS GENERALES
     # ======================
     st.markdown("### 🧰 Filtros generales")
-    colA, colB, colC = st.columns(3)
+    colA, colB, colC, colD = st.columns(4)
 
-    # 1) Minutos totales por jugador (directo de tu Excel)
     with colA:
-        min_minutos = st.number_input("Minutos mínimos (por jugador):", min_value=0, value=0, step=50, key="min_gen")
+        min_minutos = st.number_input("Minutos mínimos:", min_value=0, value=0, step=50)
     df = df0[df0['Minutos'] >= min_minutos].copy()
 
-    # 2) Liga
     with colB:
         opciones_ligas = ["Todas"] + sorted(df['Liga'].dropna().unique().tolist())
-        ligas_sel = st.multiselect("Liga (puede seleccionar varias):", opciones_ligas, default=["Todas"], key="ligas")
+        ligas_sel = st.multiselect("Liga:", opciones_ligas, default=["Todas"])
         if ligas_sel and "Todas" not in ligas_sel:
             df = df[df['Liga'].isin(ligas_sel)]
 
-    # 3) Puesto/posición/pierna
     with colC:
+        opciones_pas = ["Todos"] + all_passports
+        pas_sel = st.multiselect("Pasaporte:", opciones_pas, default=["Todos"])
+        if pas_sel and "Todos" not in pas_sel:
+            sel = set(pas_sel)
+            mask = df['Pasaportes_list'].apply(lambda lst: any(p in sel for p in lst) if isinstance(lst, list) else False)
+            df = df[mask]
+
+    with colD:
         if puesto_seleccionado not in ["Laterales", "Extremos"]:
             opciones_pie = ["Cualquiera"] + sorted([x for x in df['Foot'].dropna().unique().tolist() if x != ""])
-            pierna = st.selectbox("Pierna hábil:", opciones_pie, key="pie_general")
+            pierna = st.selectbox("Pierna hábil:", opciones_pie)
             if pierna != "Cualquiera":
                 df = df[df['Foot'] == pierna]
         elif puesto_seleccionado == "Laterales":
-            lateral = st.selectbox("Puesto:", ["Cualquiera", "Lateral derecho (RB)", "Lateral izquierdo (LB)"], key="lat")
+            lateral = st.selectbox("Puesto:", ["Cualquiera", "Lateral derecho (RB)", "Lateral izquierdo (LB)"])
             if lateral == "Lateral derecho (RB)":
                 df = df[df['Position'].fillna("").str.contains('R')]
             elif lateral == "Lateral izquierdo (LB)":
                 df = df[df['Position'].fillna("").str.contains('L')]
         elif puesto_seleccionado == "Extremos":
-            extremo = st.selectbox("Puesto:", ["Cualquiera", "Extremo por derecha", "Extremo por izquierda"], key="extremo")
+            extremo = st.selectbox("Puesto:", ["Cualquiera", "Extremo por derecha", "Extremo por izquierda"])
             if extremo == "Extremo por derecha":
                 df = df[df['Position'].fillna("").str.contains('R')]
             elif extremo == "Extremo por izquierda":
                 df = df[df['Position'].fillna("").str.contains('L')]
 
             opciones_pie = ["Cualquiera"] + sorted([x for x in df['Foot'].dropna().unique().tolist() if x != ""])
-            pierna_ext = st.selectbox("Pierna hábil:", opciones_pie, key="pie_extremos")
+            pierna_ext = st.selectbox("Pierna hábil:", opciones_pie)
             if pierna_ext != "Cualquiera":
                 df = df[df['Foot'] == pierna_ext]
 
@@ -165,37 +190,63 @@ if archivo and os.path.exists(archivo):
     atributos = atributos_por_puesto[puesto_seleccionado]
 
     with st.expander("Opciones de normalización", expanded=False):
-        usar_normalizacion = st.checkbox(
-            "Normalizar métricas a [0,1] (min–max por atributo, basado en el conjunto actual)",
-            value=True
-        )
-        st.caption("Recomendado para que los pesos sean comparables entre métricas con escalas distintas.")
+        usar_normalizacion = st.checkbox("Normalizar métricas a [0,1]", value=True)
+        st.caption("Recomendado para que los pesos (0–1) sean comparables.")
 
-    # UI de activación + peso
     pesos = {}
     activos = []
-
     cols_attr = st.columns(2)
+
     for i, atributo in enumerate(atributos):
         if atributo not in df.columns:
-            st.warning(f"Falta la columna: **{atributo}** en el dataset.")
             continue
         cont = cols_attr[i % 2]
         with cont:
-            fila = st.container(border=True)
-            with fila:
-                activo = st.checkbox(f"Usar **{atributo}**", value=False, key=f"cb_{normalizar_basico(atributo)}")
-                if activo:
-                    peso = st.number_input(
-                        f"Peso (0–1) para {atributo}",
-                        min_value=0.0, max_value=1.0, value=1.0, step=0.05,
-                        key=f"w_{normalizar_basico(atributo)}"
-                    )
-                    activos.append(atributo)
-                    pesos[atributo] = float(peso)
+            activo = st.checkbox(f"{atributo}", value=False, key=f"cb_{normalizar_basico(atributo)}")
+            if activo:
+                peso = st.number_input(
+                    f"Peso (0–1) para {atributo}",
+                    min_value=0.0, max_value=1.0, value=0.0, step=0.05,
+                    key=f"w_{normalizar_basico(atributo)}"
+                )
+                activos.append(atributo)
+                pesos[atributo] = float(peso)
 
-    # Cálculo del puntaje
-    if activos:
+    # ----- Invalida confirmación si cambió algo en pesos/activos -----
+    firma_actual = "|".join([f"{a}:{pesos.get(a,0)}" for a in sorted(activos)])
+    if firma_actual != st.session_state.firma_pesos:
+        st.session_state.pesos_confirmados = False
+        st.session_state.suma_pesos_confirmada = 0.0
+        st.session_state.firma_pesos = firma_actual
+
+    # ---- Botón de confirmación ----
+    suma_pesos = sum(pesos.values())
+    if st.button("✅ Confirmar ponderación"):
+        st.session_state.pesos_confirmados = True
+        st.session_state.suma_pesos_confirmada = suma_pesos
+
+    # Mensaje de estado
+    if st.session_state.pesos_confirmados:
+        sp = st.session_state.suma_pesos_confirmada
+        if np.isclose(sp, 1.0, atol=1e-3):
+            st.success(f"✅ Ponderación confirmada: la suma es igual a {sp:.3f}. Se calculó el puntaje correctamente.")
+        elif sp < 1.0:
+            st.warning(f"⚠️ Ponderación confirmada, pero la suma es {sp:.3f}. Tiene que ser igual a 1 por lo que no se calculará el puntaje.")
+        else:
+            st.warning(f"⚠️ Ponderación confirmada, pero la suma es {sp:.3f}. Tiene que ser igual a 1 por lo que no se calculará el puntaje.")
+    else:
+        st.info("Presioná **Confirmar ponderación** para bloquear los pesos y calcular, siempre y cuando la suma sea igual a 1. Caso contrario, se bloqueará.")
+
+    # ======================
+    #   Cálculo del puntaje (solo si se confirmó y suma≈1)
+    # ======================
+    calcular_puntaje = (
+        bool(activos)
+        and st.session_state.pesos_confirmados
+        and np.isclose(st.session_state.suma_pesos_confirmada, 1.0, atol=1e-3)
+    )
+
+    if calcular_puntaje:
         # construir columnas escaladas
         for atributo in activos:
             col_scaled = f"{atributo}__scaled"
@@ -205,9 +256,10 @@ if archivo and os.path.exists(archivo):
                 df[col_scaled] = to_num(df[atributo]).fillna(0.0).astype(float)
 
         scaled_cols = [f"{a}__scaled" for a in activos]
-        X = df[scaled_cols].to_numpy(dtype=float, copy=False)                # n_filas x n_metricas
-        w = np.array([pesos[a] for a in activos], dtype=float).reshape(-1, 1)  # n_metricas x 1
-        df['Puntaje personalizado'] = (X @ w).ravel()
+        X = df[scaled_cols].to_numpy(dtype=float, copy=False)
+        w = np.array([pesos[a] for a in activos], dtype=float).reshape(-1, 1)
+
+        # Puntaje en 0–100 (si lo querés 0–1, quitá *100 y el redondeo)
         df['Puntaje personalizado'] = np.round((X @ w).ravel() * 100, 2)
     else:
         df['Puntaje personalizado'] = np.nan
@@ -215,26 +267,25 @@ if archivo and os.path.exists(archivo):
     # ======================
     #         TABLA
     # ======================
-    st.markdown("### 🧾 Resultados (solo métricas activadas)")
-    df_tabla = df.copy()
-
-    base_cols = ['Jugador con equipo', 'Age', 'Passport country', 'Liga', 'Minutos']
-    rename_map = {'Jugador con equipo': 'Jugador', 'Age': 'Edad', 'Passport country': 'Pasaporte'}
-    df_tabla = df_tabla.rename(columns=rename_map)
-
-    cols_metricas = [a for a in activos if a in df_tabla.columns]
-    if activos:
-        df_tabla = df_tabla.sort_values(by='Puntaje personalizado', ascending=False, na_position='last')
+    st.markdown("### 🧾 Resultados")
+    df_tabla = df.rename(columns={
+        'Jugador con equipo': 'Jugador',
+        'Age': 'Edad',
+        'Passport country': 'Pasaporte'
+    })
 
     columnas_resultado = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Minutos']
-    if activos:
-        columnas_resultado += cols_metricas + ['Puntaje personalizado']
+    if calcular_puntaje:
+        columnas_resultado += activos + ['Puntaje personalizado']  # solo si confirmado y suma=1
+    else:
+        columnas_resultado += activos  # no mostramos puntaje
+
     columnas_resultado = [c for c in columnas_resultado if c in df_tabla.columns]
 
     if not df_tabla.empty:
         st.dataframe(df_tabla[columnas_resultado], use_container_width=True)
     else:
-        st.warning("No hay jugadores que cumplan con los filtros seleccionados.")
+        st.warning("No hay jugadores que cumplan con los filtros.")
 
 else:
     st.error("No se encontró el archivo correspondiente para el puesto seleccionado o la carpeta 'data' no existe.")
