@@ -79,7 +79,7 @@ ACTUALIZACION_PUESTOS = {
     "Volantes mixtos": "",
     "Volantes ofensivos": "",
     "Extremos": "",
-    "Delanteros centrales": "",
+    "Delanteros centrales": "14/08/2025",
 }
 
 # (Opcional) Garantizamos que existan todas las claves y en el orden de PUESTOS
