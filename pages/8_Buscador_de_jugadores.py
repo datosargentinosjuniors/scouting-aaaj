@@ -72,10 +72,6 @@ def to_num(s):
     return pd.to_numeric(s, errors="coerce")
 
 def parse_passports(x) -> list:
-    """
-    Convierte 'Argentina, Paraguay' -> ['Argentina','Paraguay'].
-    Maneja NaN y espacios.
-    """
     if pd.isna(x):
         return []
     s = str(x).strip()
@@ -104,7 +100,7 @@ if archivo and os.path.exists(archivo):
             'Position','Foot','Passport country'
         ] else np.nan)
 
-    # Limpieza básica y derivadas (una sola vez)
+    # Limpieza básica y derivadas
     df0['Player'] = df0['Player'].fillna("").astype(str)
     df0['Team within selected timeframe'] = df0['Team within selected timeframe'].fillna("").astype(str)
     df0['Pais competencia'] = df0['Pais competencia'].fillna("").astype(str)
@@ -113,13 +109,11 @@ if archivo and os.path.exists(archivo):
     df0['Jugador con equipo'] = df0['Player'] + ' (' + df0['Team within selected timeframe'] + ')'
     df0['Minutos'] = to_num(df0['Minutes played']).fillna(0)
 
-    # Parseo de pasaportes para filtro "is in"
+    # Pasaportes
     df0['Pasaportes_list'] = df0['Passport country'].apply(parse_passports)
-
-    # Conjunto único de pasaportes (explota la lista)
     all_passports = sorted(set(p for lst in df0['Pasaportes_list'] for p in lst))
 
-    # Puntaje AAAJ (float con NaN)
+    # Puntaje AAAJ
     if 'Puntaje AAAJ' not in df0.columns:
         df0['Puntaje AAAJ'] = np.nan
     else:
@@ -167,40 +161,38 @@ if archivo and os.path.exists(archivo):
 
     # 1) Minutos por jugador — PRIMERO (slider de rango, robusto)
     with colA:
-        # si quedó estado de un number_input previo, lo limpiamos
         if "min_gen" in st.session_state:
             st.session_state.pop("min_gen")
-
         validos_min = pd.to_numeric(df0['Minutos'], errors='coerce').dropna()
         if validos_min.empty:
             st.info("No hay valores numéricos de minutos para establecer el rango.")
             df = df0.copy()
         else:
-            min_mins = int(np.floor(validos_min.min()))
-            max_mins = int(np.ceil(validos_min.max()))
-            if min_mins >= max_mins:
-                st.caption(f"Rango de minutos (global): {min_mins} – {max_mins} (sin variación)")
-                df = df0[df0['Minutos'] == min_mins].copy()
+            lo = int(np.floor(validos_min.min()))
+            hi = int(np.ceil(validos_min.max()))
+            if lo >= hi:
+                st.caption(f"Rango de minutos (global): {lo} – {hi} (sin variación)")
+                df = df0[df0['Minutos'] == lo].copy()
             else:
-                step_val = 50 if (max_mins - min_mins) >= 50 else 1
+                step_val = 50 if (hi - lo) >= 50 else 1
                 rango_minutos = st.slider(
                     "Rango de minutos (global):",
-                    min_value=min_mins,
-                    max_value=max_mins,
-                    value=(min_mins, max_mins),
+                    min_value=lo,
+                    max_value=hi,
+                    value=(lo, hi),
                     step=step_val,
                     key="rango_min_gen"
                 )
                 df = df0[df0['Minutos'].between(rango_minutos[0], rango_minutos[1], inclusive='both')].copy()
 
-    # 2) Liga (opción 'Todas' no filtra)
+    # 2) Liga
     with colB:
         opciones_ligas = ["Todas"] + sorted(df['Liga'].dropna().unique().tolist())
         ligas_sel = st.multiselect("Liga (puede seleccionar varias):", opciones_ligas, default=["Todas"], key="ligas")
         if ligas_sel and "Todas" not in ligas_sel:
             df = df[df['Liga'].isin(ligas_sel)]
 
-    # 3) Pasaporte (is in; opción 'Todos' no filtra)
+    # 3) Pasaporte
     with colC:
         opciones_pas = ["Todos"] + all_passports
         pas_sel = st.multiselect("Pasaporte (uno o más):", opciones_pas, default=["Todos"], key="pasaportes")
@@ -209,7 +201,7 @@ if archivo and os.path.exists(archivo):
             mask = df['Pasaportes_list'].apply(lambda lst: any(p in sel for p in lst) if isinstance(lst, list) else False)
             df = df[mask]
 
-    # 4) Puesto/posición/pierna
+    # 4) Puesto / pierna
     with colD:
         if puesto_seleccionado not in ["Laterales", "Extremos"]:
             opciones_pie = ["Cualquiera"] + sorted([x for x in df['Foot'].dropna().unique().tolist() if x != ""])
@@ -261,9 +253,28 @@ if archivo and os.path.exists(archivo):
             )
             sliders[atributo] = rango
 
-    for atributo, (lo, hi) in sliders.items():
-        if atributo in df.columns and lo < hi:
-            df = df[to_num(df[atributo]).between(lo, hi, inclusive='both')]
+    for atributo, (lo_val, hi_val) in sliders.items():
+        if atributo in df.columns and lo_val < hi_val:
+            df = df[to_num(df[atributo]).between(lo_val, hi_val, inclusive='both')]
+
+    # ======================
+    #   EXCLUSIÓN MANUAL
+    # ======================
+    st.markdown("### 🚫 Excluir jugadores manualmente")
+    # usamos 'Jugador con equipo' como identificador visible y único
+    opciones_excluir = sorted(df['Jugador con equipo'].dropna().unique().tolist()) if 'Jugador con equipo' in df.columns else []
+    # mantener la selección si el jugador todavía está en opciones
+    seleccion_previa = [j for j in st.session_state.get("excluir_sel", []) if j in opciones_excluir]
+    excluir_sel = st.multiselect(
+        "Seleccioná jugadores a excluir de los resultados:",
+        options=opciones_excluir,
+        default=seleccion_previa,
+        key="excluir_sel",
+        help="Los seleccionados se eliminarán de la tabla principal y de los TOP 10 por atributo."
+    )
+    if excluir_sel:
+        df = df[~df['Jugador con equipo'].isin(excluir_sel)].copy()
+        st.caption(f"🔎 Excluidos: {len(excluir_sel)}  •  Resultados actuales: {len(df)} jugadores")
 
     # ======================
     #         TABLA
