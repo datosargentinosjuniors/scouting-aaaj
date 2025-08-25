@@ -8,12 +8,11 @@ import os, re
 #  Configuración / Título
 # =========================
 st.set_page_config(page_title="Explorador global de jugadores", layout="wide")
-st.title("🧩 Explorador global de jugadores (todas las tablas)")
+st.title("🔍 Explorador global de jugadores")
 
 # =========================
 #  Definiciones de puesto
 # =========================
-# Usamos estas claves para detectar el puesto a partir del nombre del archivo
 PUESTOS = [
     "Defensores centrales",
     "Laterales",
@@ -24,7 +23,6 @@ PUESTOS = [
     "Delanteros centrales",
 ]
 
-# Atributos por puesto (para sliders de atributos si querés usarlos más adelante)
 ATRIBUTOS_POR_PUESTO = {
     "Defensores centrales": [
         'Gol y Finalización', 'Asistencias y creación de chances', '1v1 en ataque',
@@ -64,7 +62,6 @@ def normalizar_basico(s: str) -> str:
         return ""
     s = s.lower().strip()
     s = re.sub(r"\s+", "", s)
-    # reemplazos básicos para español
     return s.translate(str.maketrans("áéíóúüñ", "aeiouun"))
 
 def inferir_puesto_por_archivo(nombre_archivo: str) -> str:
@@ -148,22 +145,14 @@ for path in sorted(archivos_xlsx):
     # puesto origen
     df_i['Puesto'] = inferir_puesto_por_archivo(path)
 
-    # guardamos
     dfs.append(df_i)
 
 if not dfs:
     st.error("No se pudo cargar ninguna tabla.")
     st.stop()
 
-# Concat (outer)
+# Concat (outer) sin sumar minutos por nombre
 df0 = pd.concat(dfs, ignore_index=True, sort=False)
-
-# =========================
-#  Minutos acumulados por jugador (sin colapsar filas)
-# =========================
-# Lo hacemos por 'Player' (misma persona aunque cambie de equipo entre tablas).
-mins_totales = df0.groupby('Player', dropna=False)['Minutos'].sum(min_count=1).rename('Minutos acumulados (jugador)')
-df0 = df0.merge(mins_totales, on='Player', how='left')
 
 # =========================
 #  Filtros globales
@@ -171,9 +160,9 @@ df0 = df0.merge(mins_totales, on='Player', how='left')
 st.markdown("### 🧰 Filtros")
 colA, colB, colC, colD = st.columns(4)
 
-# 1) Minutos (usamos por defecto los minutos acumulados del jugador)
+# 1) Minutos (por FILA, NO acumulados)
 with colA:
-    vmins = to_num(df0['Minutos acumulados (jugador)']).dropna()
+    vmins = to_num(df0['Minutos']).dropna()
     if vmins.empty:
         st.info("No hay minutos válidos para establecer rango.")
         df = df0.copy()
@@ -182,11 +171,10 @@ with colA:
         hi = int(np.ceil(vmins.max()))
         step_val = 50 if (hi - lo) >= 50 else 1
         rango_min = st.slider(
-            "Rango de minutos (acumulados por jugador):",
+            "Rango de minutos (por fila):",
             min_value=lo, max_value=hi, value=(lo, hi), step=step_val, key="rango_min_global"
         )
-        # filtramos por el acumulado del jugador
-        df = df0[df0['Minutos acumulados (jugador)'].between(rango_min[0], rango_min[1], inclusive='both')].copy()
+        df = df0[df0['Minutos'].between(rango_min[0], rango_min[1], inclusive='both')].copy()
 
 # 2) Liga
 with colB:
@@ -205,14 +193,13 @@ with colC:
         mask = df['Pasaportes_list'].apply(lambda lst: any(p in sel for p in (lst if isinstance(lst, list) else [])))
         df = df[mask]
 
-# 4) Pie / Puesto (filtro de origen)
+# 4) Pie / Puesto (origen)
 with colD:
     opciones_pie = ["Cualquiera"] + sorted([x for x in df['Foot'].dropna().unique().tolist() if x != ""])
     pie_sel = st.selectbox("Pierna hábil:", opciones_pie, key="pie")
     if pie_sel != "Cualquiera":
         df = df[df['Foot'] == pie_sel]
 
-# Filtro adicional por Puesto de origen (opcional)
 colP1, colP2 = st.columns([1, 3])
 with colP1:
     puestos_disponibles = ["Todos"] + sorted(df['Puesto'].dropna().unique().tolist())
@@ -221,28 +208,10 @@ with colP1:
         df = df[df['Puesto'].isin(puestos_sel)]
 
 # =========================
-#  Exclusión manual
-# =========================
-st.markdown("### 🚫 Excluir jugadores manualmente")
-opciones_excluir = sorted(df['Jugador con equipo'].dropna().unique().tolist()) if 'Jugador con equipo' in df.columns else []
-seleccion_previa = [j for j in st.session_state.get("excluir_sel_global", []) if j in opciones_excluir]
-excluir_sel = st.multiselect(
-    "Seleccioná jugadores a excluir:",
-    options=opciones_excluir,
-    default=seleccion_previa,
-    key="excluir_sel_global",
-    help="Se eliminan de la salida final."
-)
-if excluir_sel:
-    df = df[~df['Jugador con equipo'].isin(excluir_sel)].copy()
-    st.caption(f"Excluidos: {len(excluir_sel)}  •  Resultados actuales: {len(df)} filas")
-
-# =========================
 #  Tabla final (estructura solicitada)
 # =========================
 st.markdown("### 🧾 Jugadores que cumplen con los criterios")
 
-# Renombres estándar
 df_tabla = df.copy()
 asegurar_col(df_tabla, 'Puntaje AAAJ', np.nan)
 df_tabla = df_tabla.rename(columns={
@@ -252,41 +221,28 @@ df_tabla = df_tabla.rename(columns={
     'Asistencias y creación de chances': 'Ast. y chances'
 })
 
-# Determinar atributos a mostrar:
-# Si el usuario eligió un único puesto en "Puesto (origen)", usamos los atributos de ese puesto;
-# si eligió varios o "Todos", mostramos solo las columnas de atributos que existan y no estén vacías.
+# Atributos a mostrar (un puesto → sus atributos; varios/todos → unión existente)
 if puestos_sel and "Todos" not in puestos_sel and len(puestos_sel) == 1:
     atributos_referencia = ATRIBUTOS_POR_PUESTO.get(puestos_sel[0], [])
 else:
-    # unión suavecita: de todos los ATRIBUTOS_POR_PUESTO, los que existan en df_tabla
     atributos_referencia = []
     for arr in ATRIBUTOS_POR_PUESTO.values():
         for a in arr:
             if a in df_tabla.columns and a not in atributos_referencia:
                 atributos_referencia.append(a)
 
-# Etiquetas amigables
 atributos_vista = ['Ast. y chances' if a == 'Asistencias y creación de chances' else a for a in atributos_referencia]
 
-# Columnas base
-columnas_resultado = [
-    'Jugador', 'Edad', 'Pasaporte', 'Liga', 'Puesto',  # + puesto de origen
-    'Puntaje AAAJ',
-    'Minutos',  # minutos de la fila (origen)
-    'Minutos acumulados (jugador)'  # suma global por jugador
-] + [c for c in atributos_vista if c in df_tabla.columns]
+columnas_resultado = ['Jugador', 'Puntaje AAAJ', 'Edad', 'Puesto', 'Minutos', 'Pasaporte', 'Liga'] + [c for c in atributos_vista if c in df_tabla.columns]
 
-# Ordenar por Puntaje si existe, si no por Minutos acumulados
+# Ordenar por Puntaje si existe; si no, por Minutos de la fila
 if 'Puntaje AAAJ' in df_tabla.columns:
-    df_tabla = df_tabla.sort_values(by=['Puntaje AAAJ', 'Minutos acumulados (jugador)'],
-                                    ascending=[False, False], na_position='last')
+    df_tabla = df_tabla.sort_values(by=['Puntaje AAAJ', 'Minutos'], ascending=[False, False], na_position='last')
 else:
-    df_tabla = df_tabla.sort_values(by='Minutos acumulados (jugador)', ascending=False, na_position='last')
+    df_tabla = df_tabla.sort_values(by='Minutos', ascending=False, na_position='last')
 
-# Mostrar
 if df_tabla.empty:
     st.warning("No hay jugadores que cumplan con los filtros seleccionados.")
 else:
-    # solo mostrar las columnas que existan
     columnas_visibles = [c for c in columnas_resultado if c in df_tabla.columns]
     st.dataframe(df_tabla[columnas_visibles], use_container_width=True)
