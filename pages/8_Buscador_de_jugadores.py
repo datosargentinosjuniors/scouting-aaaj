@@ -159,13 +159,30 @@ if archivo and os.path.exists(archivo):
     #    FILTROS GLOBALES
     # ======================
     st.markdown("### 🧰 Filtros generales")
-    # 👉 Ahora 4 columnas: Minutos, Liga, Pasaporte, Puesto/Pierna
     colA, colB, colC, colD = st.columns(4)
 
-    # 1) Minutos por jugador — PRIMERO (directo)
+    # 1) Minutos por jugador — PRIMERO (slider de rango)
     with colA:
-        min_minutos = st.number_input("Minutos mínimos:", min_value=0, value=0, step=50, key="min_gen")
-    df = df0[df0['Minutos'] >= min_minutos].copy()
+        validos_min = df0['Minutos'].dropna()
+        if validos_min.empty:
+            # sin datos válidos: no filtramos
+            st.info("No hay valores numéricos de minutos para establecer el rango.")
+            rango_minutos = (0, 0)
+            df = df0.copy()
+        else:
+            min_mins = int(np.floor(validos_min.min()))
+            max_mins = int(np.ceil(validos_min.max()))
+            # Ajusto que el step no exceda el rango
+            step_val = 50 if (max_mins - min_mins) >= 50 else 1
+            rango_minutos = st.slider(
+                "Rango de minutos:",
+                min_value=min_mins,
+                max_value=max_mins,
+                value=(min_mins, max_mins),
+                step=step_val,
+                key="rango_min_gen"
+            )
+            df = df0[df0['Minutos'].between(rango_minutos[0], rango_minutos[1], inclusive='both')].copy()
 
     # 2) Liga (opción 'Todas' no filtra)
     with colB:
@@ -202,7 +219,6 @@ if archivo and os.path.exists(archivo):
                 df = df[df['Position'].fillna("").str.contains('R')]
             elif extremo == "Extremo por izquierda":
                 df = df[df['Position'].fillna("").str.contains('L')]
-
             opciones_pie = ["Cualquiera"] + sorted([x for x in df['Foot'].dropna().unique().tolist() if x != ""])
             pierna_ext = st.selectbox("Pierna hábil:", opciones_pie, key="pie_extremos")
             if pierna_ext != "Cualquiera":
