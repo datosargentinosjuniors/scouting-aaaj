@@ -163,19 +163,21 @@ if archivo and os.path.exists(archivo):
 
     # 1) Minutos por jugador — PRIMERO (slider de rango)
     with colA:
-        validos_min = df0['Minutos'].dropna()
+        validos_min = pd.to_numeric(df0['Minutos'], errors='coerce').dropna()
         if validos_min.empty:
-            # sin datos válidos: no filtramos
             st.info("No hay valores numéricos de minutos para establecer el rango.")
-            rango_minutos = (0, 0)
             df = df0.copy()
         else:
             min_mins = int(np.floor(validos_min.min()))
             max_mins = int(np.ceil(validos_min.max()))
-            # Ajusto que el step no exceda el rango
-            step_val = 50 if (max_mins - min_mins) >= 50 else 1
-            rango_minutos = st.slider(
-                "Rango de minutos:",
+            if min_mins >= max_mins:
+                # Todos los jugadores tienen el mismo minuto → no hay rango para deslizar
+                st.caption(f"Rango de minutos (global): {min_mins} – {max_mins} (sin variación)")
+                df = df0[df0['Minutos'] == min_mins].copy()
+            else:
+                step_val = 50 if (max_mins - min_mins) >= 50 else 1
+                rango_minutos = st.slider(
+                "Rango de minutos (global):",
                 min_value=min_mins,
                 max_value=max_mins,
                 value=(min_mins, max_mins),
@@ -183,7 +185,7 @@ if archivo and os.path.exists(archivo):
                 key="rango_min_gen"
             )
             df = df0[df0['Minutos'].between(rango_minutos[0], rango_minutos[1], inclusive='both')].copy()
-
+            
     # 2) Liga (opción 'Todas' no filtra)
     with colB:
         opciones_ligas = ["Todas"] + sorted(df['Liga'].dropna().unique().tolist())
