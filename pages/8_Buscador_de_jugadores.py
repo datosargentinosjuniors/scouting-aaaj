@@ -119,15 +119,15 @@ if archivo and os.path.exists(archivo):
     # Conjunto único de pasaportes (explota la lista)
     all_passports = sorted(set(p for lst in df0['Pasaportes_list'] for p in lst))
 
-    # Puntaje AAAJ (float con NaN) — si lo usás para ordenar por defecto
+    # Puntaje AAAJ (float con NaN)
     if 'Puntaje AAAJ' not in df0.columns:
         df0['Puntaje AAAJ'] = np.nan
     else:
         df0['Puntaje AAAJ'] = to_num(df0['Puntaje AAAJ'])
 
-    # --- Jugador de referencia (filtra por MINUTOS DIRECTOS) ---
+    # --- Jugador de referencia ---
     st.markdown("#### 👤 Jugador de referencia")
-    col_ref1, col_ref2 = st.columns([1,2])
+    col_ref1, col_ref2 = st.columns([1, 2])
     with col_ref1:
         min_min_ref = st.number_input(
             "Minutos mínimos para poder elegirlo:",
@@ -136,7 +136,11 @@ if archivo and os.path.exists(archivo):
     df_ref = df0[df0['Minutos'] >= min_min_ref]
     jugadores_filtrados_ref = df_ref['Jugador con equipo'].dropna().unique().tolist()
     with col_ref2:
-        jugador_ref = st.selectbox("Jugador de referencia:", ["Sin referencia"] + jugadores_filtrados_ref, key="jug_ref")
+        jugador_ref = st.selectbox(
+            "Jugador de referencia:",
+            ["Sin referencia"] + jugadores_filtrados_ref,
+            key="jug_ref"
+        )
 
     if jugador_ref != "Sin referencia":
         atributos_display = [
@@ -161,8 +165,12 @@ if archivo and os.path.exists(archivo):
     st.markdown("### 🧰 Filtros generales")
     colA, colB, colC, colD = st.columns(4)
 
-    # 1) Minutos por jugador — PRIMERO (slider de rango)
+    # 1) Minutos por jugador — PRIMERO (slider de rango, robusto)
     with colA:
+        # si quedó estado de un number_input previo, lo limpiamos
+        if "min_gen" in st.session_state:
+            st.session_state.pop("min_gen")
+
         validos_min = pd.to_numeric(df0['Minutos'], errors='coerce').dropna()
         if validos_min.empty:
             st.info("No hay valores numéricos de minutos para establecer el rango.")
@@ -171,21 +179,20 @@ if archivo and os.path.exists(archivo):
             min_mins = int(np.floor(validos_min.min()))
             max_mins = int(np.ceil(validos_min.max()))
             if min_mins >= max_mins:
-                # Todos los jugadores tienen el mismo minuto → no hay rango para deslizar
                 st.caption(f"Rango de minutos (global): {min_mins} – {max_mins} (sin variación)")
                 df = df0[df0['Minutos'] == min_mins].copy()
             else:
                 step_val = 50 if (max_mins - min_mins) >= 50 else 1
                 rango_minutos = st.slider(
-                "Rango de minutos (global):",
-                min_value=min_mins,
-                max_value=max_mins,
-                value=(min_mins, max_mins),
-                step=step_val,
-                key="rango_min_gen"
-            )
-            df = df0[df0['Minutos'].between(rango_minutos[0], rango_minutos[1], inclusive='both')].copy()
-            
+                    "Rango de minutos (global):",
+                    min_value=min_mins,
+                    max_value=max_mins,
+                    value=(min_mins, max_mins),
+                    step=step_val,
+                    key="rango_min_gen"
+                )
+                df = df0[df0['Minutos'].between(rango_minutos[0], rango_minutos[1], inclusive='both')].copy()
+
     # 2) Liga (opción 'Todas' no filtra)
     with colB:
         opciones_ligas = ["Todas"] + sorted(df['Liga'].dropna().unique().tolist())
