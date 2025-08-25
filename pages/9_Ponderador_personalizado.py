@@ -317,9 +317,10 @@ if archivo and os.path.exists(archivo):
     columnas_resultado = [c for c in columnas_resultado if c in df_tabla.columns]
 
     if not df_tabla.empty:
+        if 'Puntaje personalizado' in df_tabla.columns:
+            df_tabla = df_tabla.sort_values(by='Puntaje personalizado', ascending=False, na_position='last')
         st.dataframe(df_tabla[columnas_resultado], use_container_width=True)
     else:
         st.warning("No hay jugadores que cumplan con los filtros.")
-
 else:
     st.error("No se encontró el archivo correspondiente para el puesto seleccionado o la carpeta 'data' no existe.")
