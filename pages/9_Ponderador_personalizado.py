@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -141,9 +142,25 @@ if archivo and os.path.exists(archivo):
     st.markdown("### 🧰 Filtros generales")
     colA, colB, colC, colD = st.columns(4)
 
+    # Slider de rango (por fila) — reemplaza al number_input
     with colA:
-        min_minutos = st.number_input("Minutos mínimos:", min_value=0, value=0, step=50)
-    df = df0[df0['Minutos'] >= min_minutos].copy()
+        validos_min = pd.to_numeric(df0['Minutos'], errors='coerce').dropna()
+        if validos_min.empty:
+            st.info("No hay valores numéricos de minutos para establecer el rango.")
+            df = df0.copy()
+        else:
+            lo = int(np.floor(validos_min.min()))
+            hi = int(np.ceil(validos_min.max()))
+            if lo >= hi:
+                st.caption(f"Rango de minutos (global): {lo} – {hi} (sin variación)")
+                df = df0[df0['Minutos'] == lo].copy()
+            else:
+                step_val = 50 if (hi - lo) >= 50 else 1
+                rango_minutos = st.slider(
+                    "Rango de minutos (por fila):",
+                    min_value=lo, max_value=hi, value=(lo, hi), step=step_val, key="rango_min_gen"
+                )
+                df = df0[df0['Minutos'].between(rango_minutos[0], rango_minutos[1], inclusive='both')].copy()
 
     with colB:
         opciones_ligas = ["Todas"] + sorted(df['Liga'].dropna().unique().tolist())
@@ -259,10 +276,27 @@ if archivo and os.path.exists(archivo):
         X = df[scaled_cols].to_numpy(dtype=float, copy=False)
         w = np.array([pesos[a] for a in activos], dtype=float).reshape(-1, 1)
 
-        # Puntaje en 0–100 (si lo querés 0–1, quitá *100 y el redondeo)
+        # Puntaje en 0–100
         df['Puntaje personalizado'] = np.round((X @ w).ravel() * 100, 2)
     else:
         df['Puntaje personalizado'] = np.nan
+
+    # ======================
+    #   EXCLUSIÓN MANUAL (después de ponderar)
+    # ======================
+    st.markdown("### 🚫 Excluir jugadores manualmente")
+    opciones_excluir = sorted(df['Jugador con equipo'].dropna().unique().tolist()) if 'Jugador con equipo' in df.columns else []
+    seleccion_previa = [j for j in st.session_state.get("excluir_sel_perso", []) if j in opciones_excluir]
+    excluir_sel = st.multiselect(
+        "Seleccioná jugadores a excluir de la salida:",
+        options=opciones_excluir,
+        default=seleccion_previa,
+        key="excluir_sel_perso",
+        help="Los seleccionados se eliminarán de la tabla de resultados."
+    )
+    if excluir_sel:
+        df = df[~df['Jugador con equipo'].isin(excluir_sel)].copy()
+        st.caption(f"🔎 Excluidos: {len(excluir_sel)}  •  Resultados actuales: {len(df)} filas")
 
     # ======================
     #         TABLA
