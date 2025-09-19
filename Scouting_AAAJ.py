@@ -77,7 +77,7 @@ ACTUALIZACION_PUESTOS = {
     "Laterales": "13/08/2025",
     "Volantes defensivos": "26/08/2025",
     "Volantes mixtos": "19/08/2025",
-    "Volantes ofensivos": "",
+    "Volantes ofensivos": "26/08/2025",
     "Extremos": "22/08/2025",
     "Delanteros centrales": "14/08/2025",
 }
