@@ -356,36 +356,36 @@ if archivo and os.path.exists(archivo):
         st.warning("No hay jugadores que cumplan con los filtros seleccionados.")
 
     # ======================
-    #    TOP 10 POR ATRIBUTO
-    # ======================
-    st.markdown("### 🏆 Top 10 por atributo (según filtros aplicados)")
-    mapa_atributos = {'Asistencias y creación de chances': 'Ast. y chances'}
+#    TOP 10 POR ATRIBUTO
+# ======================
+st.markdown("### 🏆 Top 10 por atributo (según filtros aplicados)")
+mapa_atributos = {'Asistencias y creación de chances': 'Ast. y chances'}
 
-    if df.empty:
-        st.info("No se pueden calcular Top 10 porque no hay datos tras los filtros.")
-    else:
-        for atributo in atributos:
-            col_df = atributo
-            nombre_mostrar = mapa_atributos.get(atributo, atributo)
-            if col_df in df.columns:
-                serie = to_num(df[col_df])
-                if serie.dropna().empty:
-                    st.info(f"Sin valores numéricos para **{nombre_mostrar}**.")
-                    continue
-
-                top10 = df.sort_values(by=col_df, ascending=False, na_position='last').head(10).copy()
-                top10 = top10.rename(columns={
-                    'Jugador con equipo': 'Jugador',
-                    'Age': 'Edad',
-                    'Passport country': 'Pasaporte',
-                    'Asistencias y creación de chances': 'Ast. y chances'
-                })
-                cols_top = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Minutos', nombre_mostrar]
-                cols_top = [c for c in cols_top if c in top10.columns]
-                st.markdown(f"#### 🔹 {nombre_mostrar}")
-                st.dataframe(top10[cols_top], use_container_width=True)
-            else:
-                st.warning(f"No hay datos para el atributo: {atributo}")
-
+if df.empty:
+    st.info("No se pueden calcular Top 10 porque no hay datos tras los filtros.")
 else:
-    st.error("No se encontró el archivo correspondiente para el puesto seleccionado o la carpeta 'data' no existe.")
+    for atributo in atributos:
+        col_df = atributo
+        nombre_mostrar = mapa_atributos.get(atributo, atributo)
+        if col_df in df.columns:
+            serie = to_num(df[col_df])
+            if serie.dropna().empty:
+                st.info(f"Sin valores numéricos para **{nombre_mostrar}**.")
+                continue
+
+            top10 = df.sort_values(by=col_df, ascending=False, na_position='last').head(10).copy()
+            top10 = top10.rename(columns={
+                'Jugador con equipo': 'Jugador',
+                'Age': 'Edad',
+                'Passport country': 'Pasaporte',
+                'Asistencias y creación de chances': 'Ast. y chances'
+            })
+
+            # 👇 Agregamos "Finalización de contrato" a la tabla
+            cols_top = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Minutos', 'Finalización de contrato', nombre_mostrar]
+            cols_top = [c for c in cols_top if c in top10.columns]
+
+            st.markdown(f"#### 🔹 {nombre_mostrar}")
+            st.dataframe(top10[cols_top], use_container_width=True)
+        else:
+            st.warning(f"No hay datos para el atributo: {atributo}")
