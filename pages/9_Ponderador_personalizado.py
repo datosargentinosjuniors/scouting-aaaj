@@ -232,7 +232,7 @@ if archivo and os.path.exists(archivo):
         fechas_validas = df['Contrato_dt'].dropna()
         if fechas_validas.empty:
             st.caption("No hay fechas válidas en el subconjunto actual.")
-            incluir_nan = st.checkbox("Incluir jugadores sin fecha", value=True, key="incluir_nan_contrato_empty")
+            incluir_nan = st.checkbox("Agregar a la tabla a los jugadores que no tengan una fecha de finalización asignada", value=True, key="incluir_nan_contrato_empty")
             if not incluir_nan:
                 df = df[df['Contrato_dt'].notna()].copy()  # quedará vacío aquí
         else:
@@ -247,7 +247,7 @@ if archivo and os.path.exists(archivo):
                 max_value=max_f,
                 key="fecha_contrato_limite"
             )
-            incluir_nan = st.checkbox("Incluir jugadores sin fecha", value=False, key="incluir_nan_contrato")
+            incluir_nan = st.checkbox("Agregar a la tabla a los jugadores que no tengan una fecha de finalización asignada", value=False, key="incluir_nan_contrato")
             if incluir_nan:
                 mask_fecha = df['Contrato_dt'].isna() | (df['Contrato_dt'] <= pd.Timestamp(fecha_limite))
             else:
