@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os, re
+from datetime import date
 
 # =========================
 #  Configuración / Título
@@ -87,6 +88,15 @@ def parse_passports(x) -> list:
         return []
     return [p.strip() for p in s.split(',') if p.strip()]
 
+def parse_contract_date(s):
+    """Parsea '31/12/2026' (DD/MM/YYYY) a datetime; NaT si inválido."""
+    if pd.isna(s):
+        return pd.NaT
+    s = str(s).strip()
+    if not s or s.lower() == 'nan':
+        return pd.NaT
+    return pd.to_datetime(s, dayfirst=True, errors='coerce')
+
 @st.cache_data(show_spinner=False)
 def cargar_xlsx(path: str) -> pd.DataFrame:
     return pd.read_excel(path)
@@ -124,6 +134,9 @@ for path in sorted(archivos_xlsx):
             'Position','Foot','Passport country'
         ] else np.nan)
 
+    # asegurar contrato
+    asegurar_col(df_i, 'Contract expires', "")
+
     # derivadas base
     df_i['Player'] = df_i['Player'].fillna("").astype(str)
     df_i['Team within selected timeframe'] = df_i['Team within selected timeframe'].fillna("").astype(str)
@@ -141,6 +154,14 @@ for path in sorted(archivos_xlsx):
 
     # pasaportes
     df_i['Pasaportes_list'] = df_i['Passport country'].apply(parse_passports)
+
+    # contrato: parse + visible
+    df_i['Contrato_dt'] = df_i['Contract expires'].apply(parse_contract_date)
+    df_i['Finalización de contrato'] = np.where(
+        df_i['Contrato_dt'].notna(),
+        df_i['Contrato_dt'].dt.strftime('%d/%m/%Y'),
+        df_i['Contract expires'].fillna("").astype(str)
+    )
 
     # puesto origen
     df_i['Puesto'] = inferir_puesto_por_archivo(path)
@@ -207,6 +228,44 @@ with colP1:
     if puestos_sel and "Todos" not in puestos_sel:
         df = df[df['Puesto'].isin(puestos_sel)]
 
+# --- 📅 Finalización de contrato: ANULAR (por defecto True) o aplicar filtro ---
+st.markdown("#### 📅 Finalización de contrato")
+anular_filtro_contrato = st.checkbox(
+    "Anular filtro de fecha de contrato (incluir a todos)",
+    value=True, key="anular_filtro_contrato_global"
+)
+
+if not anular_filtro_contrato:
+    fechas_validas = df['Contrato_dt'].dropna()
+    if fechas_validas.empty:
+        st.caption("No hay fechas válidas en el subconjunto actual.")
+        incluir_nan = st.checkbox(
+            "Agregar a la tabla a los jugadores que no tengan una fecha de finalización asignada",
+            value=True, key="incluir_nan_contrato_empty_global"
+        )
+        if not incluir_nan:
+            df = df[df['Contrato_dt'].notna()].copy()  # probablemente quedará vacío aquí
+    else:
+        min_f = fechas_validas.min().date()
+        max_f = fechas_validas.max().date()
+        hoy = date.today()
+        def_date = min(max(hoy, min_f), max_f)
+        fecha_limite = st.date_input(
+            "Mostrar jugadores cuyo contrato vence hasta el día elegido (incluido):",
+            value=def_date, min_value=min_f, max_value=max_f, key="fecha_contrato_limite_global"
+        )
+        incluir_nan = st.checkbox(
+            "Agregar a la tabla a los jugadores que no tengan una fecha de finalización asignada",
+            value=False, key="incluir_nan_contrato_global"
+        )
+        if incluir_nan:
+            mask_fecha = df['Contrato_dt'].isna() | (df['Contrato_dt'] <= pd.Timestamp(fecha_limite))
+        else:
+            mask_fecha = df['Contrato_dt'].notna() & (df['Contrato_dt'] <= pd.Timestamp(fecha_limite))
+        df = df[mask_fecha].copy()
+else:
+    st.caption("🔓 Filtro de contrato desactivado: se incluyen jugadores con y sin fecha.")
+
 # =========================
 #  Tabla final (estructura solicitada)
 # =========================
@@ -233,7 +292,9 @@ else:
 
 atributos_vista = ['Ast. y chances' if a == 'Asistencias y creación de chances' else a for a in atributos_referencia]
 
-columnas_resultado = ['Jugador', 'Puntaje AAAJ', 'Edad', 'Puesto', 'Minutos', 'Pasaporte', 'Liga'] + [c for c in atributos_vista if c in df_tabla.columns]
+columnas_resultado = [
+    'Jugador', 'Puntaje AAAJ', 'Edad', 'Puesto', 'Minutos', 'Pasaporte', 'Liga', 'Finalización de contrato'
+] + [c for c in atributos_vista if c in df_tabla.columns]
 
 # Ordenar por Puntaje si existe; si no, por Minutos de la fila
 if 'Puntaje AAAJ' in df_tabla.columns:
