@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import os
 import re
+from datetime import date
 
 # --- Configuración inicial ---
 st.set_page_config(page_title="Buscador por perfil", layout="wide")
@@ -84,7 +85,7 @@ def minmax_scale(series: pd.Series):
     return (s - mn) / (mx - mn)
 
 def parse_passports(x) -> list:
-    """Convierte 'Argentina, Paraguay' -> ['Argentina','Paraguay'] (robusto a ';')."""
+    """Convierte 'Argentina; Paraguay' o 'Argentina, Paraguay' en lista."""
     if pd.isna(x):
         return []
     s = str(x).strip()
@@ -93,7 +94,16 @@ def parse_passports(x) -> list:
     s = s.replace(';', ',')
     return [p.strip() for p in s.split(',') if p.strip()]
 
-# --- Estado global para confirmación ---
+def parse_contract_date(s):
+    """Parsea '31/12/2026' (DD/MM/YYYY) a datetime64; NaT si inválido."""
+    if pd.isna(s):
+        return pd.NaT
+    s = str(s).strip()
+    if not s or s.lower() == 'nan':
+        return pd.NaT
+    return pd.to_datetime(s, dayfirst=True, errors='coerce')
+
+# --- Estado para confirmación de pesos ---
 if 'pesos_confirmados' not in st.session_state:
     st.session_state.pesos_confirmados = False
 if 'suma_pesos_confirmada' not in st.session_state:
@@ -123,7 +133,8 @@ if archivo and os.path.exists(archivo):
             else np.nan
         )
 
-    # Derivadas/limpieza
+    # Asegurar columna de contrato y derivadas
+    asegurar_col(df0, 'Contract expires', "")
     df0['Player'] = df0['Player'].fillna("").astype(str)
     df0['Team within selected timeframe'] = df0['Team within selected timeframe'].fillna("").astype(str)
     df0['Pais competencia'] = df0['Pais competencia'].fillna("").astype(str)
@@ -136,13 +147,21 @@ if archivo and os.path.exists(archivo):
     df0['Pasaportes_list'] = df0['Passport country'].apply(parse_passports)
     all_passports = sorted(set(p for lst in df0['Pasaportes_list'] for p in lst))
 
+    # --- Contrato: parse + columna visible ---
+    df0['Contrato_dt'] = df0['Contract expires'].apply(parse_contract_date)
+    df0['Finalización de contrato'] = np.where(
+        df0['Contrato_dt'].notna(),
+        df0['Contrato_dt'].dt.strftime('%d/%m/%Y'),
+        df0['Contract expires'].fillna("").astype(str)
+    )
+
     # ======================
     #    FILTROS GENERALES
     # ======================
     st.markdown("### 🧰 Filtros generales")
     colA, colB, colC, colD = st.columns(4)
 
-    # Slider de rango (por fila) — reemplaza al number_input
+    # Minutos
     with colA:
         validos_min = pd.to_numeric(df0['Minutos'], errors='coerce').dropna()
         if validos_min.empty:
@@ -162,12 +181,14 @@ if archivo and os.path.exists(archivo):
                 )
                 df = df0[df0['Minutos'].between(rango_minutos[0], rango_minutos[1], inclusive='both')].copy()
 
+    # Liga
     with colB:
         opciones_ligas = ["Todas"] + sorted(df['Liga'].dropna().unique().tolist())
         ligas_sel = st.multiselect("Liga:", opciones_ligas, default=["Todas"])
         if ligas_sel and "Todas" not in ligas_sel:
             df = df[df['Liga'].isin(ligas_sel)]
 
+    # Pasaporte
     with colC:
         opciones_pas = ["Todos"] + all_passports
         pas_sel = st.multiselect("Pasaporte:", opciones_pas, default=["Todos"])
@@ -176,6 +197,7 @@ if archivo and os.path.exists(archivo):
             mask = df['Pasaportes_list'].apply(lambda lst: any(p in sel for p in lst) if isinstance(lst, list) else False)
             df = df[mask]
 
+    # Puesto/pierna
     with colD:
         if puesto_seleccionado not in ["Laterales", "Extremos"]:
             opciones_pie = ["Cualquiera"] + sorted([x for x in df['Foot'].dropna().unique().tolist() if x != ""])
@@ -194,11 +216,45 @@ if archivo and os.path.exists(archivo):
                 df = df[df['Position'].fillna("").str.contains('R')]
             elif extremo == "Extremo por izquierda":
                 df = df[df['Position'].fillna("").str.contains('L')]
-
             opciones_pie = ["Cualquiera"] + sorted([x for x in df['Foot'].dropna().unique().tolist() if x != ""])
             pierna_ext = st.selectbox("Pierna hábil:", opciones_pie)
             if pierna_ext != "Cualquiera":
                 df = df[df['Foot'] == pierna_ext]
+
+    # --- 📅 Finalización de contrato: ANULAR o aplicar filtro (idéntico al otro) ---
+    st.markdown("#### 📅 Finalización de contrato")
+    anular_filtro_contrato = st.checkbox(
+        "No filtrar por finalización de contrato (incluir a todos)",
+        value=False, key="anular_filtro_contrato"
+    )
+
+    if not anular_filtro_contrato:
+        fechas_validas = df['Contrato_dt'].dropna()
+        if fechas_validas.empty:
+            st.caption("No hay fechas válidas en el subconjunto actual.")
+            incluir_nan = st.checkbox("Incluir jugadores sin fecha", value=True, key="incluir_nan_contrato_empty")
+            if not incluir_nan:
+                df = df[df['Contrato_dt'].notna()].copy()  # quedará vacío aquí
+        else:
+            min_f = fechas_validas.min().date()
+            max_f = fechas_validas.max().date()
+            hoy = date.today()
+            def_date = min(max(hoy, min_f), max_f)
+            fecha_limite = st.date_input(
+                "Mostrar jugadores cuyo contrato vence hasta el día elegido (incluido):",
+                value=def_date,
+                min_value=min_f,
+                max_value=max_f,
+                key="fecha_contrato_limite"
+            )
+            incluir_nan = st.checkbox("Incluir jugadores sin fecha", value=False, key="incluir_nan_contrato")
+            if incluir_nan:
+                mask_fecha = df['Contrato_dt'].isna() | (df['Contrato_dt'] <= pd.Timestamp(fecha_limite))
+            else:
+                mask_fecha = df['Contrato_dt'].notna() & (df['Contrato_dt'] <= pd.Timestamp(fecha_limite))
+            df = df[mask_fecha].copy()
+    else:
+        st.caption("🔓 Filtro de contrato desactivado: se incluyen jugadores con y sin fecha.")
 
     # ======================
     #   ATRIBUTOS + PONDERACIÓN
@@ -229,33 +285,31 @@ if archivo and os.path.exists(archivo):
                 activos.append(atributo)
                 pesos[atributo] = float(peso)
 
-    # ----- Invalida confirmación si cambió algo en pesos/activos -----
+    # Invalidar confirmación si cambió algo
     firma_actual = "|".join([f"{a}:{pesos.get(a,0)}" for a in sorted(activos)])
     if firma_actual != st.session_state.firma_pesos:
         st.session_state.pesos_confirmados = False
         st.session_state.suma_pesos_confirmada = 0.0
         st.session_state.firma_pesos = firma_actual
 
-    # ---- Botón de confirmación ----
+    # Confirmación
     suma_pesos = sum(pesos.values())
     if st.button("✅ Confirmar ponderación"):
         st.session_state.pesos_confirmados = True
         st.session_state.suma_pesos_confirmada = suma_pesos
 
-    # Mensaje de estado
+    # Estado
     if st.session_state.pesos_confirmados:
         sp = st.session_state.suma_pesos_confirmada
         if np.isclose(sp, 1.0, atol=1e-3):
-            st.success(f"✅ Ponderación confirmada: la suma es igual a {sp:.3f}. Se calculó el puntaje correctamente.")
-        elif sp < 1.0:
-            st.warning(f"⚠️ Ponderación confirmada, pero la suma es {sp:.3f}. Tiene que ser igual a 1 por lo que no se calculará el puntaje.")
+            st.success(f"✅ Ponderación confirmada: la suma es {sp:.3f}. Se calculará el puntaje.")
         else:
-            st.warning(f"⚠️ Ponderación confirmada, pero la suma es {sp:.3f}. Tiene que ser igual a 1 por lo que no se calculará el puntaje.")
+            st.warning(f"⚠️ Ponderación confirmada, pero la suma es {sp:.3f}. Debe ser 1 para calcular el puntaje.")
     else:
-        st.info("Presioná **Confirmar ponderación** para bloquear los pesos y calcular, siempre y cuando la suma sea igual a 1. Caso contrario, se bloqueará.")
+        st.info("Presioná **Confirmar ponderación** para bloquear los pesos y calcular, siempre que la suma sea 1.")
 
     # ======================
-    #   Cálculo del puntaje (solo si se confirmó y suma≈1)
+    #   Cálculo del puntaje (si suma≈1)
     # ======================
     calcular_puntaje = (
         bool(activos)
@@ -264,7 +318,6 @@ if archivo and os.path.exists(archivo):
     )
 
     if calcular_puntaje:
-        # construir columnas escaladas
         for atributo in activos:
             col_scaled = f"{atributo}__scaled"
             if usar_normalizacion:
@@ -276,7 +329,6 @@ if archivo and os.path.exists(archivo):
         X = df[scaled_cols].to_numpy(dtype=float, copy=False)
         w = np.array([pesos[a] for a in activos], dtype=float).reshape(-1, 1)
 
-        # Puntaje en 0–100
         df['Puntaje personalizado'] = np.round((X @ w).ravel() * 100, 2)
     else:
         df['Puntaje personalizado'] = np.nan
@@ -308,11 +360,11 @@ if archivo and os.path.exists(archivo):
         'Passport country': 'Pasaporte'
     })
 
-    columnas_resultado = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Minutos']
+    columnas_resultado = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Minutos', 'Finalización de contrato']
     if calcular_puntaje:
-        columnas_resultado += activos + ['Puntaje personalizado']  # solo si confirmado y suma=1
+        columnas_resultado += activos + ['Puntaje personalizado']
     else:
-        columnas_resultado += activos  # no mostramos puntaje
+        columnas_resultado += activos
 
     columnas_resultado = [c for c in columnas_resultado if c in df_tabla.columns]
 
