@@ -251,7 +251,7 @@ if archivo and os.path.exists(archivo):
     st.markdown("#### 📅 Finalización de contrato")
     anular_filtro_contrato = st.checkbox(
         "Anular filtro de fecha de contracto",
-        value=False, key="anular_filtro_contrato"
+        value=True, key="anular_filtro_contrato"
     )
 
     if not anular_filtro_contrato:
