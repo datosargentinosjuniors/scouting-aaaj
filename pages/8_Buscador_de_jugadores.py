@@ -1,8 +1,10 @@
+# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
 import numpy as np
 import os
 import re
+from datetime import date
 
 # --- Configuración inicial ---
 st.set_page_config(page_title="Buscador por perfil", layout="wide")
@@ -79,6 +81,15 @@ def parse_passports(x) -> list:
         return []
     return [p.strip() for p in s.split(',') if p.strip()]
 
+def parse_contract_date(s):
+    """Parsea '31/12/2026' (u otros) a datetime (NaT si no válido)."""
+    if pd.isna(s):
+        return pd.NaT
+    s = str(s).strip()
+    if not s or s.lower() == 'nan':
+        return pd.NaT
+    return pd.to_datetime(s, dayfirst=True, errors='coerce')
+
 # --- App ---
 puestos = list(atributos_por_puesto.keys())
 puesto_seleccionado = st.selectbox("Seleccioná el puesto a analizar:", puestos)
@@ -100,6 +111,9 @@ if archivo and os.path.exists(archivo):
             'Position','Foot','Passport country'
         ] else np.nan)
 
+    # Asegurar columna de contrato
+    asegurar_col(df0, 'Contract expires', "")
+
     # Limpieza básica y derivadas
     df0['Player'] = df0['Player'].fillna("").astype(str)
     df0['Team within selected timeframe'] = df0['Team within selected timeframe'].fillna("").astype(str)
@@ -118,6 +132,14 @@ if archivo and os.path.exists(archivo):
         df0['Puntaje AAAJ'] = np.nan
     else:
         df0['Puntaje AAAJ'] = to_num(df0['Puntaje AAAJ'])
+
+    # --- Finalización de contrato (parse + visible) ---
+    df0['Contrato_dt'] = df0['Contract expires'].apply(parse_contract_date)
+    df0['Finalización de contrato'] = np.where(
+        df0['Contrato_dt'].notna(),
+        df0['Contrato_dt'].dt.strftime('%d/%m/%Y'),
+        df0['Contract expires'].fillna("").astype(str)
+    )
 
     # --- Jugador de referencia ---
     st.markdown("#### 👤 Jugador de referencia")
@@ -149,7 +171,7 @@ if archivo and os.path.exists(archivo):
             'Asistencias y creación de chances': 'Ast. y chances'
         })
         asegurar_col(jugador_info, 'Puntaje AAAJ', np.nan)
-        cols = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Puntaje AAAJ', 'Minutos'] + atributos_display
+        cols = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Puntaje AAAJ', 'Minutos', 'Finalización de contrato'] + atributos_display
         cols = [c for c in cols if c in jugador_info.columns]
         st.dataframe(jugador_info[cols], use_container_width=True)
 
@@ -159,7 +181,7 @@ if archivo and os.path.exists(archivo):
     st.markdown("### 🧰 Filtros generales")
     colA, colB, colC, colD = st.columns(4)
 
-    # 1) Minutos por jugador — PRIMERO (slider de rango, robusto)
+    # 1) Minutos por jugador — PRIMERO
     with colA:
         if "min_gen" in st.session_state:
             st.session_state.pop("min_gen")
@@ -225,6 +247,42 @@ if archivo and os.path.exists(archivo):
             if pierna_ext != "Cualquiera":
                 df = df[df['Foot'] == pierna_ext]
 
+    # --- 📅 Finalización de contrato: ANULAR o aplicar filtro ---
+    st.markdown("#### 📅 Finalización de contrato")
+    anular_filtro_contrato = st.checkbox(
+        "Anular filtro de fecha de contracto",
+        value=False, key="anular_filtro_contrato"
+    )
+
+    if not anular_filtro_contrato:
+        # Se mantiene el filtro por fecha límite + checkbox de NaN
+        fechas_validas = df['Contrato_dt'].dropna()
+        if fechas_validas.empty:
+            st.caption("No hay fechas válidas en el subconjunto actual.")
+            incluir_nan = st.checkbox("Agregar a la tabla a los jugadores que no tengan una fecha de finalización asignada", value=True, key="incluir_nan_contrato_empty")
+            if not incluir_nan:
+                df = df[df['Contrato_dt'].notna()].copy()  # quedará vacío en este escenario
+        else:
+            min_f = fechas_validas.min().date()
+            max_f = fechas_validas.max().date()
+            hoy = date.today()
+            def_date = min(max(hoy, min_f), max_f)
+            fecha_limite = st.date_input(
+                "Mostrar jugadores cuyo contrato vence hasta el día elegido (incluido):",
+                value=def_date,
+                min_value=min_f,
+                max_value=max_f,
+                key="fecha_contrato_limite"
+            )
+            incluir_nan = st.checkbox("Agregar a la tabla a los jugadores que no tengan una fecha de finalización asignada", value=False, key="incluir_nan_contrato")
+            if incluir_nan:
+                mask_fecha = df['Contrato_dt'].isna() | (df['Contrato_dt'] <= pd.Timestamp(fecha_limite))
+            else:
+                mask_fecha = df['Contrato_dt'].notna() & (df['Contrato_dt'] <= pd.Timestamp(fecha_limite))
+            df = df[mask_fecha].copy()
+    else:
+        st.caption("🔓 Filtro de contrato desactivado: se incluyen jugadores con y sin fecha.")
+
     # ======================
     #   Filtros por atributo
     # ======================
@@ -261,9 +319,7 @@ if archivo and os.path.exists(archivo):
     #   EXCLUSIÓN MANUAL
     # ======================
     st.markdown("### 🚫 Excluir jugadores manualmente")
-    # usamos 'Jugador con equipo' como identificador visible y único
     opciones_excluir = sorted(df['Jugador con equipo'].dropna().unique().tolist()) if 'Jugador con equipo' in df.columns else []
-    # mantener la selección si el jugador todavía está en opciones
     seleccion_previa = [j for j in st.session_state.get("excluir_sel", []) if j in opciones_excluir]
     excluir_sel = st.multiselect(
         "Seleccioná jugadores a excluir de los resultados:",
@@ -289,7 +345,7 @@ if archivo and os.path.exists(archivo):
         'Asistencias y creación de chances': 'Ast. y chances'
     })
     atributos_vista = ['Ast. y chances' if a == 'Asistencias y creación de chances' else a for a in atributos]
-    columnas_resultado = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Puntaje AAAJ', 'Minutos'] + \
+    columnas_resultado = ['Jugador', 'Edad', 'Pasaporte', 'Liga', 'Puntaje AAAJ', 'Minutos', 'Finalización de contrato'] + \
                          [c for c in atributos_vista if c in df_tabla.columns]
 
     df_tabla = df_tabla.sort_values(by='Puntaje AAAJ', ascending=False, na_position='last')
