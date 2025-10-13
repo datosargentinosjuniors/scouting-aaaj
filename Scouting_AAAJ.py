@@ -73,8 +73,8 @@ ACTUALIZACION_PUESTOS = {
     # "Defensores centrales": "14/08/2025",
     # "Laterales": "2025-08-10",
     # Dejá vacío "" para los que aún no actualizaste
-    "Defensores centrales": "12/08/2025",
-    "Laterales": "13/08/2025",
+    "Defensores centrales": "01/10/2025",
+    "Laterales": "11/10/2025",
     "Volantes defensivos": "26/08/2025",
     "Volantes mixtos": "19/08/2025",
     "Volantes ofensivos": "26/08/2025",
