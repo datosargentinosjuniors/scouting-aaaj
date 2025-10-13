@@ -43,7 +43,7 @@ st.markdown("""
         <p class='custom-text'>
             📌 <em>Detalles a tener en cuenta:</em><br><br>
             <strong>Ya se empezaron a cargar las ligas que tienen formato 2025/2026.</strong> se recomienda estar atento a los minutos disputados por jugador.<br>
-            En caso de ser de este año (<strong>2025</strong>), se puede jugar un margen mucho mayor considerando la gran cantidad de partidos disputados.
+            En caso de ser de este año (<strong>2025</strong>), se puede jugar un margen mucho mayor considerando la gran cantidad de partidos que ya se jugaron.
         </p>
     </div>
 """, unsafe_allow_html=True)
