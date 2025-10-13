@@ -42,8 +42,8 @@ st.markdown("""
     <div class='custom-box'>
         <p class='custom-text'>
             📌 <em>Detalles a tener en cuenta:</em><br><br>
-            Se recomienda filtrar con un mínimo de <strong>800 minutos</strong> en aquellas ligas que sean <strong>24/25</strong> o del <strong>2024</strong>.<br>
-            En caso de ser de este año (<strong>2025</strong>), colocar un mínimo de <strong>500 minutos</strong>, considerando que todavía no se han jugado tantos partidos.
+            <strong>Ya se empezaron a cargar las ligas que tienen formato 2025/2026.</strong> se recomienda estar atento a los minutos disputados por jugador.<br>
+            En caso de ser de este año (<strong>2025</strong>), se puede jugar un margen mucho mayor considerando la gran cantidad de partidos disputados.
         </p>
     </div>
 """, unsafe_allow_html=True)
