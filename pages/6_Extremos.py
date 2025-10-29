@@ -15,7 +15,7 @@ def quitar_tildes(texto):
 # Cargar el Excel (con cache para optimizar)
 @st.cache_data
 def load_data():
-    return pd.read_excel('data/final_extremos_todos_2025.xlsx')
+    return pd.read_excel('data/final_extremos_todos_20252026.xlsx')
 
 def main():
     st.set_page_config(page_title="Extremos", layout="wide")
