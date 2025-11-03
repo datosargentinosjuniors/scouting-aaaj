@@ -88,7 +88,7 @@ ACTUALIZACION_PUESTOS = {p: ACTUALIZACION_PUESTOS.get(p, "") for p in PUESTOS}
 # Armamos la tabla
 df_actualizacion = pd.DataFrame({
     "Puesto": PUESTOS,
-    "Fecha última actualización": [ACTUALIZACION_PUESTOS[p] for p in PUESTOS],
+    "Última actualización": [ACTUALIZACION_PUESTOS[p] for p in PUESTOS],
 })
 
 st.dataframe(df_actualizacion, use_container_width=True)
