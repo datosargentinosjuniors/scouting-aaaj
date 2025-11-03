@@ -14,7 +14,7 @@ def quitar_tildes(texto):
 
 @st.cache_data
 def load_data():
-    return pd.read_excel('data/final_volantesDefensivos_todos25.xlsx')
+    return pd.read_excel('data/final_volantesDefensivos_todos20252026.xlsx.xlsx')
 
 def main():
     st.set_page_config(page_title="Volantes defensivos", layout="wide")
