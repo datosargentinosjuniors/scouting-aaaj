@@ -75,10 +75,10 @@ ACTUALIZACION_PUESTOS = {
     # Dejá vacío "" para los que aún no actualizaste
     "Defensores centrales": "10/10/2025",
     "Laterales": "11/10/2025",
-    "Volantes defensivos": "26/08/2025",
+    "Volantes defensivos": "29/10/2025",
     "Volantes mixtos": "15/10/2025",
     "Volantes ofensivos": "15/10/2025",
-    "Extremos": "22/08/2025",
+    "Extremos": "27/10/2025",
     "Delanteros centrales": "16/10/2025",
 }
 
