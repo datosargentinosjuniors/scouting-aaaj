@@ -42,6 +42,9 @@ st.markdown("""
     <div class='custom-box'>
         <p class='custom-text'>
             📌 <em>Detalles a tener en cuenta:</em><br><br>
+            <strong>¡Sumado un nuevo apartado para el puesto de arqueros!</strong> (Liga Profesional Argentina 2025). Se actualiza vía scrapping de manera automática.
+
+            
             <strong>Ya se empezaron a cargar las ligas que tienen formato 2025/2026.</strong> se recomienda estar atento a los minutos disputados por jugador.<br>
             En caso de ser de este año (<strong>2025</strong>), se puede establecer un margen mucho mayor considerando la gran cantidad de partidos que ya se completaron.
         </p>
