@@ -10,4 +10,4 @@ undetected-chromedriver
 selenium
 webdriver-manager
 numpy
-
+IPython
