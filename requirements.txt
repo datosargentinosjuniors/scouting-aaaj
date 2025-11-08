@@ -10,4 +10,5 @@ undetected-chromedriver
 selenium
 webdriver-manager
 numpy
+distutils
 
