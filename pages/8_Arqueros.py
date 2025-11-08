@@ -149,7 +149,7 @@ def build_per90_and_percentiles(arqueros: pd.DataFrame) -> tuple[pd.DataFrame, p
         'Centros cortados', 'Acciones defensivas\nfuera del área', 'Goles evitados', 'Efectividad de\npases largos',
         '% de pases que\nfueron largos', '% de saques de arco\nque fueron largos']
 
-    lower_better = {'Goles en contra', 'Remates (al arco) en contra', 'PSxG'}
+    lower_better = {}
 
     arq100 = arq90[['Jugador', 'Equipo', 'Nacimiento', 'Minutos', '90s']].copy()
     for m in metrics:
