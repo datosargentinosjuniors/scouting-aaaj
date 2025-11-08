@@ -6,3 +6,8 @@ python-dotenv
 scikit-learn
 openpyxl
 LanusStats
+undetected-chromedriver
+selenium
+webdriver-manager
+numpy
+
