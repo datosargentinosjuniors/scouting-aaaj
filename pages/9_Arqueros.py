@@ -15,7 +15,7 @@ import unicodedata
 
 import LanusStats as ls  # Se asume instalado/ disponible en tu entorno
 
-st.set_page_config(page_title="Arqueros", layout="wide")
+st.set_page_config(page_title="Arqueros (beta)", layout="wide")
 
 # =====================
 # Utilidades
