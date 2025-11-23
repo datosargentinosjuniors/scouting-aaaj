@@ -11,7 +11,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 #   Configuración de página
 # =========================
 st.set_page_config(page_title="Jugadores similares por perfil", layout="wide")
-st.title("🔍 Jugadores similares por perfil (coseno + z-score + similitud %)")
+st.title("🔍 Jugadores similares por perfil")
 
 # =========================
 #   Mapas de atributos por puesto
