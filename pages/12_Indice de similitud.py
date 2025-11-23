@@ -11,7 +11,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 #   Configuración de página
 # =========================
 st.set_page_config(page_title="Jugadores similares por perfil", layout="wide")
-st.title("🔍 Jugadores similares por perfil (coseno + z-score)")
+st.title("🔍 Jugadores similares por perfil (coseno + z-score + similitud %)")
 
 # =========================
 #   Mapas de atributos por puesto
@@ -52,6 +52,7 @@ atributos_por_puesto = {
 #   Utilidades (mismas que en la app nueva)
 # =========================
 def normalizar_basico(s: str) -> str:
+    """Normalize strings in a consistent way."""
     if not isinstance(s, str):
         return ""
     s = s.lower().strip()
@@ -60,6 +61,7 @@ def normalizar_basico(s: str) -> str:
     return s.translate(reemplazos)
 
 def buscar_archivo_por_puesto(puesto: str, carpeta: str = "data"):
+    """Busca un archivo cuyo nombre contenga el puesto normalizado."""
     objetivo = normalizar_basico(puesto)
     try:
         for archivo in os.listdir(carpeta):
@@ -82,7 +84,7 @@ def to_num(s):
     return pd.to_numeric(s, errors="coerce")
 
 def parse_contract_date(s):
-    """Parsea '31/12/2026' (u otros) a datetime (NaT si no válido)."""
+    """Parsea fechas tipo '31/12/2026' a datetime."""
     if pd.isna(s):
         return pd.NaT
     s = str(s).strip()
@@ -97,183 +99,153 @@ puestos = list(atributos_por_puesto.keys())
 puesto_seleccionado = st.selectbox("Seleccioná el puesto a analizar:", puestos)
 
 # =========================
-#   Carga de datos (misma lógica que la app nueva)
+#   Carga de datos
 # =========================
 archivo = buscar_archivo_por_puesto(puesto_seleccionado, carpeta="data")
 
 if not archivo or not os.path.exists(archivo):
-    st.error("No se encontró un archivo Excel para el puesto seleccionado en la carpeta 'data'.")
+    st.error("No se encontró un archivo Excel para este puesto en la carpeta 'data'.")
     st.stop()
 
 df0 = cargar_datos_xlsx(archivo)
 
-# Columnas mínimas / obligatorias
+# Columnas obligatorias
 obligatorias = [
     'Player', 'Team within selected timeframe', 'Minutes played',
     'Pais competencia', 'Competencia', 'Position', 'Foot',
     'Age', 'Passport country'
 ]
 for c in obligatorias:
-    asegurar_col(df0, c, "" if c in [
-        'Player','Team within selected timeframe','Pais competencia','Competencia',
-        'Position','Foot','Passport country'
-    ] else np.nan)
+    asegurar_col(df0, c, "")
 
-# Asegurar columnas adicionales que podemos mostrar
 asegurar_col(df0, 'Puntaje AAAJ', np.nan)
 asegurar_col(df0, 'Contract expires', "")
 
-# Limpieza básica y derivadas
-df0['Player'] = df0['Player'].fillna("").astype(str)
-df0['Team within selected timeframe'] = df0['Team within selected timeframe'].fillna("").astype(str)
-df0['Pais competencia'] = df0['Pais competencia'].fillna("").astype(str)
-df0['Competencia'] = df0['Competencia'].fillna("").astype(str)
+# Limpieza básica
+df0['Player'] = df0['Player'].astype(str).str.strip()
+df0['Team within selected timeframe'] = df0['Team within selected timeframe'].astype(str).str.strip()
+df0['Pais competencia'] = df0['Pais competencia'].astype(str).str.strip()
+df0['Competencia'] = df0['Competencia'].astype(str).str.strip()
 
 df0['Liga'] = df0['Pais competencia'] + ' - ' + df0['Competencia']
-df0['Jugador con equipo'] = df0['Player'] + ' (' + df0['Team within selected timeframe'] + ')'
+df0['Jugador con equipo'] = df0['Player'] + " (" + df0['Team within selected timeframe'] + ")"
 df0['Minutos'] = to_num(df0['Minutes played']).fillna(0)
 
-# Contrato (solo para mostrar en la tabla final)
 df0['Contrato_dt'] = df0['Contract expires'].apply(parse_contract_date)
 df0['Finalización de contrato'] = np.where(
     df0['Contrato_dt'].notna(),
-    df0['Contrato_dt'].dt.strftime('%d/%m/%Y'),
-    df0['Contract expires'].fillna("").astype(str)
+    df0['Contrato_dt'].dt.strftime("%d/%m/%Y"),
+    df0['Contract expires']
 )
 
 # =========================
-#   Filtro mínimo de minutos (para el universo de comparación)
+#   Filtro mínimo de minutos
 # =========================
-st.markdown("#### ⏱️ Filtro mínimo de minutos jugados")
-min_minutos = st.number_input(
-    "Minutos jugados mínimos para considerar en la comparación:",
-    min_value=0, value=0, step=50
-)
+st.markdown("#### ⏱️ Minutos mínimos")
+min_minutos = st.number_input("Minutos mínimos para considerar:", min_value=0, value=0, step=50)
 
 df = df0[df0['Minutos'] >= min_minutos].copy()
 
 if df.empty:
-    st.warning("⚠️ No hay jugadores que cumplan el mínimo de minutos seleccionado.")
+    st.warning("No hay jugadores con esos minutos.")
     st.stop()
 
 # =========================
 #   Jugador de referencia
 # =========================
 st.markdown("#### 👤 Jugador de referencia")
-jugadores_ref = df['Jugador con equipo'].dropna().unique().tolist()
-jugador_ref = st.selectbox("Jugador de referencia:", jugadores_ref)
+
+jugadores_ref = sorted(df['Jugador con equipo'].dropna().unique().tolist())
+jugador_ref = st.selectbox("Seleccioná el jugador:", jugadores_ref)
 
 # =========================
-#   Filtro por ligas (universo donde buscar similares)
+#   Filtro por ligas (universo de comparación)
 # =========================
-st.markdown("#### 🌍 Ligas donde buscar jugadores similares")
-opciones_ligas = ["Todas"] + sorted(df['Liga'].dropna().unique().tolist())
-ligas_sel = st.multiselect(
-    "Seleccioná una o más ligas (o 'Todas'):",
-    opciones_ligas,
-    default=["Todas"]
-)
+st.markdown("#### 🌍 Ligas donde buscar similares")
 
-if ligas_sel and "Todas" not in ligas_sel:
-    df_comp_base = df[df['Liga'].isin(ligas_sel)].copy()
-else:
+opciones_ligas = ["Todas"] + sorted(df['Liga'].dropna().unique())
+ligas_sel = st.multiselect("Ligas:", opciones_ligas, default=["Todas"])
+
+if "Todas" in ligas_sel or not ligas_sel:
     df_comp_base = df.copy()
+else:
+    df_comp_base = df[df['Liga'].isin(ligas_sel)]
 
 if df_comp_base.empty:
-    st.warning("⚠️ No hay jugadores en las ligas seleccionadas.")
+    st.warning("No hay jugadores en esas ligas.")
     st.stop()
 
 # =========================
-#   Atributos a usar en la comparación
+#   Atributos a usar para comparar
 # =========================
-st.markdown("#### 📊 Atributos del perfil a usar en la similitud")
+st.markdown("#### 📊 Atributos a comparar")
 
 atributos_default = atributos_por_puesto[puesto_seleccionado]
-opc_atributos = ["Todos (por defecto)"] + atributos_default
+opciones_atr = ["Todos (por defecto)"] + atributos_default
 
-atributos_sel = st.multiselect(
-    "Seleccioná atributos:",
-    opc_atributos,
-    default=["Todos (por defecto)"]
-)
+atr_sel = st.multiselect("Atributos:", opciones_atr, default=["Todos (por defecto)"])
 
-if "Todos (por defecto)" in atributos_sel or not atributos_sel:
+if "Todos (por defecto)" in atr_sel:
     atributos_usar = atributos_default
 else:
-    atributos_usar = atributos_sel
+    atributos_usar = atr_sel
 
-# Chequeo de columnas disponibles
-faltan_attr = [a for a in atributos_usar if a not in df.columns]
-if faltan_attr:
-    st.error("Faltan en el Excel las siguientes columnas de atributos:\n\n" + ", ".join(faltan_attr))
+faltan = [a for a in atributos_usar if a not in df.columns]
+if faltan:
+    st.error("Faltan columnas en el Excel: " + ", ".join(faltan))
     st.stop()
 
 # =========================
 #   Cálculo de similitud (coseno + z-score)
 # =========================
-if jugador_ref and atributos_usar:
+df_ref = df[df['Jugador con equipo'] == jugador_ref].copy()
+df_ref = df_ref.dropna(subset=atributos_usar)
 
-    # --- Jugador de referencia ---
-    df_ref = df[df['Jugador con equipo'] == jugador_ref].copy()
+if df_ref.empty:
+    st.warning("El jugador seleccionado no tiene datos en esos atributos.")
+    st.stop()
 
-    if df_ref.empty:
-        st.warning("⚠️ No se encontró el jugador de referencia en el subconjunto filtrado.")
-        st.stop()
+df_comp = df_comp_base.dropna(subset=atributos_usar).copy()
+df_comp = df_comp[df_comp['Jugador con equipo'] != jugador_ref]
 
-    # Asegurarnos de que tenga datos en todos los atributos
-    df_ref = df_ref.dropna(subset=atributos_usar)
-    if df_ref.empty:
-        st.warning("⚠️ El jugador de referencia no tiene datos válidos en los atributos seleccionados.")
-        st.stop()
+if df_comp.empty:
+    st.warning("No hay otros jugadores con datos válidos.")
+    st.stop()
 
-    # --- Universo de comparación (filtrado por ligas + minutos) ---
-    df_comp = df_comp_base.dropna(subset=atributos_usar).copy()
+df_ref = df_ref.head(1)
 
-    # Excluir por si el referencia está dentro del universo de comparación
-    df_comp = df_comp[df_comp['Jugador con equipo'] != jugador_ref].copy()
+# Modelo completo
+df_model = pd.concat([df_ref, df_comp], ignore_index=True)
+X = df_model[atributos_usar].astype(float).values
 
-    if df_comp.empty:
-        st.warning("⚠️ No hay otros jugadores con datos válidos en los atributos seleccionados.")
-        st.stop()
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
 
-    # Nos quedamos con una sola fila de referencia (por seguridad)
-    df_ref = df_ref.head(1)
+X_ref = X_scaled[0:1]
+X_comp = X_scaled[1:]
 
-    # --- Z-score + coseno ---
-    df_model = pd.concat([df_ref, df_comp], ignore_index=True)
-    X = df_model[atributos_usar].astype(float).values
+sim_cos = cosine_similarity(X_ref, X_comp)[0]
+distancias = 1 - sim_cos
+similitud_pct = (sim_cos * 100).round(2)
 
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+# Resultado
+resultados = df_comp.copy()
+resultados['Distancia (coseno-z)'] = distancias
+resultados['Similitud (%)'] = similitud_pct
 
-    n_ref = len(df_ref)  # normalmente 1
-    X_ref = X_scaled[:n_ref]     # referencia
-    X_comp = X_scaled[n_ref:]    # resto
+resultados = resultados.sort_values("Similitud (%)", ascending=False)
 
-    sim_cos = cosine_similarity(X_ref, X_comp)[0]  # vector 1D
-    distancias = 1 - sim_cos  # distancia = 1 - similitud
+# =========================
+#   Mostrar tabla final
+# =========================
+st.markdown("### 🏆 Jugadores más similares (por perfil)")
 
-    resultados = df_comp.copy()
-    resultados['Distancia (coseno-z)'] = distancias
+cols_mostrar = [
+    'Jugador con equipo', 'Age', 'Passport country', 'Liga',
+    'Minutos', 'Puntaje AAAJ', 'Finalización de contrato',
+    'Similitud (%)', 'Distancia (coseno-z)'
+]
 
-    # =========================
-    #   Mostrar resultados
-    # =========================
-    st.markdown("### 🏆 Jugadores más similares (perfil, coseno + z-score)")
+cols_mostrar = [c for c in cols_mostrar if c in resultados.columns]
 
-    resultados = resultados.sort_values("Distancia (coseno-z)", ascending=True)
-
-    columnas_base = [
-        'Jugador con equipo', 'Age', 'Passport country',
-        'Liga', 'Minutos', 'Puntaje AAAJ', 'Finalización de contrato',
-        'Distancia (coseno-z)'
-    ]
-    columnas_mostrar = [c for c in columnas_base if c in resultados.columns]
-
-    st.dataframe(
-        resultados[columnas_mostrar].reset_index(drop=True),
-        use_container_width=True
-    )
-
-else:
-    st.info("📝 Seleccioná un jugador de referencia y al menos un atributo para comenzar.")
+st.dataframe(resultados[cols_mostrar].reset_index(drop=True), use_container_width=True)
