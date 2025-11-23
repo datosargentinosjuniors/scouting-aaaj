@@ -13,6 +13,22 @@ from sklearn.metrics.pairwise import cosine_similarity
 st.set_page_config(page_title="Jugadores similares por perfil", layout="wide")
 st.title("🔍 Jugadores similares por perfil")
 
+st.markdown("""
+### 🧠 ¿Qué hace esta herramienta?
+
+Esta página te permite **buscar jugadores con un estilo de juego similar** al que selecciones.
+
+Para lograrlo:
+- Compara atributos clave del puesto.
+- Normaliza todos los atributos para que sean comparables.
+- Calcula qué tan parecido es cada jugador al elegido (según su **perfil**, no su nivel).
+
+El resultado principal es **Similitud (%)**:
+- **100%** → muy parecido al jugador elegido  
+- **0%** → estilo completamente distinto
+
+""")
+
 # =========================
 #   Mapas de atributos por puesto
 #   (misma nomenclatura que la app nueva)
