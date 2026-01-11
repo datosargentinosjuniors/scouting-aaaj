@@ -235,7 +235,7 @@ st.title("📌 Buscador por puesto")
 
 # Selector principal de puesto (persistente)
 if "puesto" not in st.session_state:
-    st.session_state.puesto = "Defensores centrales"
+    st.session_state.puesto = None
 
 st.selectbox(
     "Seleccioná el puesto a explorar",
