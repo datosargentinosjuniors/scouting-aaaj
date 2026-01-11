@@ -233,9 +233,7 @@ st.set_page_config(page_title="Gráficos de radar", layout="wide")
 
 st.title("📌 Buscador por puesto")
 
-# Selector principal de puesto (persistente)
-if "puesto" not in st.session_state:
-    st.session_state.puesto = None
+
 
 st.selectbox(
     "Seleccioná el puesto a explorar",
