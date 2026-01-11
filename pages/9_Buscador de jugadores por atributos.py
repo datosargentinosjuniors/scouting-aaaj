@@ -8,7 +8,7 @@ from datetime import date
 
 # --- Configuración inicial ---
 st.set_page_config(page_title="Buscador por perfil", layout="wide")
-st.title("🎯 Buscador de jugadores por perfil")
+st.title("🎯 Buscador de jugadores por atributos")
 
 # --- Mapas de atributos por puesto ---
 atributos_por_puesto = {
