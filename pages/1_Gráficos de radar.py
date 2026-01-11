@@ -229,10 +229,9 @@ CONFIG = {
 # =========================
 # App
 # =========================
-st.set_page_config(page_title="Buscador por puesto", layout="wide")
+st.set_page_config(page_title="Gráficos de radar", layout="wide")
 
 st.title("📌 Buscador por puesto")
-st.caption("Elegí un puesto y compará jugadores con radar + ranking filtrado (minutos / pierna / ligas).")
 
 # Selector principal de puesto (persistente)
 if "puesto" not in st.session_state:
