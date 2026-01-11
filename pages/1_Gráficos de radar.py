@@ -238,7 +238,7 @@ if "puesto" not in st.session_state:
     st.session_state.puesto = "Defensores centrales"
 
 st.selectbox(
-    "Puesto",
+    "Seleccioná el puesto a explorar",
     options=list(CONFIG.keys()),
     key="puesto",
 )
