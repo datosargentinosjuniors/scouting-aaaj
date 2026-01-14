@@ -108,7 +108,6 @@ ATRIBUTOS_METRICAS = {
         "Accelerations per 90 (percentile)",
     ],
 }
-
 ATRIBUTOS_ORDEN = list(ATRIBUTOS_METRICAS.keys())
 
 # ======================================================
@@ -141,7 +140,6 @@ def list_presets_for_position(puesto: str):
     folder = Path("configs") / puesto
     if not folder.exists():
         return []
-    # excluye .gitkeep (no coincide por extensión)
     return sorted([p.stem for p in folder.glob("*.json")])
 
 def load_preset(puesto: str, preset_name: str):
@@ -163,6 +161,13 @@ def save_preset(puesto: str, preset_name: str, metric_weights: dict, attribute_w
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
     return str(out_path)
+
+def delete_preset(puesto: str, preset_name: str) -> bool:
+    path = Path("configs") / puesto / f"{preset_name}.json"
+    if path.exists():
+        path.unlink()
+        return True
+    return False
 
 # ======================================================
 # UI: Puesto y archivo
@@ -224,8 +229,9 @@ with c2:
     liga_sel = st.selectbox("Liga", ligas, index=0 if ligas else None)
 
 with c3:
-    st.caption("Presets (por puesto)")
-    st.info("Se leen/escriben en:  `configs/<puesto>/*.json`")
+    st.caption("Presets")
+    presets = list_presets_for_position(puesto)
+    preset_sel = st.selectbox("Cargar preset", ["— Sin preset —"] + presets, index=0, key=f"preset_sel__{puesto}")
 
 df = df_raw.copy()
 df = df[df["Minutos"] >= minutos_min].copy()
@@ -233,15 +239,9 @@ if liga_sel:
     df = df[df["Liga"] == liga_sel].copy()
 
 # ======================================================
-# Paso 2: Presets (cargar/guardar)
+# Paso 2: Presets (cargar/guardar/borrar)
 # ======================================================
-st.divider()
-st.subheader("📂 Presets del puesto")
-
-presets = list_presets_for_position(puesto)
-preset_sel = st.selectbox("Cargar preset", ["— Sin preset —"] + presets, index=0, key=f"preset_sel__{puesto}")
-
-cL, cS = st.columns([1, 1])
+cL, cS, cD = st.columns([1, 1, 1])
 
 with cL:
     if st.button("📥 Aplicar preset", use_container_width=True, disabled=(preset_sel == "— Sin preset —")):
@@ -292,8 +292,23 @@ with cS:
                         metric_weights=metric_weights_to_save,
                         attribute_weights=attribute_weights_to_save,
                     )
-                    st.success(f"Preset guardado en: {saved}")
+                    st.success(f"Preset guardado: {preset_name}.json")
                     st.rerun()
+
+with cD:
+    with st.popover("🗑️ Borrar preset", use_container_width=True):
+        if preset_sel == "— Sin preset —":
+            st.info("Elegí un preset para poder borrarlo.")
+        else:
+            st.warning(f"Vas a borrar definitivamente: **{preset_sel}**")
+            confirm = st.checkbox("Sí, quiero borrarlo", value=False)
+            if st.button("Borrar ahora", type="primary", use_container_width=True, disabled=(not confirm)):
+                ok = delete_preset(puesto, preset_sel)
+                if ok:
+                    st.success("Preset borrado.")
+                    st.rerun()
+                else:
+                    st.error("No se encontró el archivo del preset para borrar.")
 
 # ======================================================
 # Paso 3: Reponderación (pesos editables + contadores)
