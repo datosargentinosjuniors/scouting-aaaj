@@ -555,4 +555,19 @@ final_cols = present_priority + rest
 if "Puntaje AAAJ" in df_show.columns:
     df_show = df_show.sort_values("Puntaje AAAJ", ascending=False)
 
+import pyarrow as pa
+
+bad_cols = []
+for c in final_cols:
+    try:
+        pa.array(df_show[c].tolist())
+    except Exception as e:
+        bad_cols.append((c, str(e)))
+
+if bad_cols:
+    st.error("Columnas que rompen PyArrow:")
+    for c, e in bad_cols[:20]:
+        st.write(f"- {c}: {e}")
+
+
 st.dataframe(df_show[final_cols], use_container_width=True)
