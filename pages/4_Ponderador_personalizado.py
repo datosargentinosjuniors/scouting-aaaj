@@ -217,8 +217,14 @@ with f2:
     passport_sel = st.multiselect("Pasaporte", passports)
 
 with f3:
-    altura_min = int(df["Height"].min())
-    altura_sel = st.slider("Altura mínima", altura_min, int(df["Height"].max()), altura_min)
+    altura_default = int(df["Height"].min()) if df["Height"].notna().any() else 0
+    altura_sel = st.number_input(
+        "Altura mínima (cm)",
+        min_value=0,
+        max_value=300,
+        value=altura_default,
+        step=1
+    )
 
 df = df[
     (df["Age"].between(*edad_sel)) &
