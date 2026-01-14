@@ -3,248 +3,238 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-# =========================
+# ======================================================
 # Config
-# =========================
-st.set_page_config(page_title="Reponderador - Defensores centrales", layout="wide")
-st.title("🧩 Reponderador (Defensores centrales)")
+# ======================================================
+st.set_page_config(page_title="🧩 Reponderador multi-puesto", layout="wide")
+st.title("🧩 Reponderador de jugadores – Modelo base")
 
-# Excel del puesto (defensores centrales)
-EXCEL_PATH = "data/todos_defensoresCentrales_todos_20252026.xlsx"
+# ======================================================
+# Excels por puesto
+# ======================================================
+EXCELS_POR_PUESTO = {
+    "Defensores centrales": "data/final_defensoresCentrales_todos_20252026.xlsx",
+    "Laterales": "data/final_laterales_todos_20252026.xlsx",
+    "Volantes defensivos": "data/final_volantesDefensivos_todos_20252026.xlsx",
+    "Volantes mixtos": "data/final_volantesMixtos_todos_20252026.xlsx",
+    "Volantes ofensivos": "data/final_volantesOfensivos_todos_20252026.xlsx",
+    "Extremos": "data/final_extremos_todos_20252026.xlsx",
+    "Delanteros centrales": "data/final_delanterosCentrales_todos_20252026.xlsx",
+}
 
-# =========================
-# Load
-# =========================
+# ======================================================
+# Atributos y métricas (MODELO BASE)
+# ======================================================
+ATRIBUTOS_METRICAS = {
+    "Gol y Finalización": [
+        "Goals (percentile)", "Goals per 90 (percentile)",
+        "xG (percentile)", "xG per 90 (percentile)",
+        "Goals - xG (percentile)",
+        "Non-penalty goals (percentile)", "Non-penalty goals per 90 (percentile)",
+        "Shots (percentile)", "Shots per 90 (percentile)",
+        "Shots on target, % (percentile)", "Shots on target per 90 (percentile)",
+        "Goal conversion, % (percentile)",
+    ],
+    "Asistencias y creación de chances": [
+        "Assists (percentile)", "Assists per 90 (percentile)",
+        "xA (percentile)", "xA per 90 (percentile)",
+        "Shot assists per 90 (percentile)", "Second assists per 90 (percentile)",
+        "Third assists per 90 (percentile)",
+        "Passes to penalty area per 90 (percentile)",
+        "Accurate passes to penalty area, % (percentile)",
+        "Successful Passes to Penalty area per 90 (percentile)",
+        "Key passes per 90 (percentile)",
+        "Deep completions per 90 (percentile)",
+        "Successful Through passes per 90 (percentile)",
+        "Touches in box per 90 (percentile)",
+    ],
+    "1v1 en ataque": [
+        "Dribbles per 90 (percentile)",
+        "Successful dribbles, % (percentile)",
+        "Successful dribbles per 90 (percentile)",
+        "Offensive duels per 90 (percentile)",
+        "Offensive duels won, % (percentile)",
+        "Offensive duels won per 90 (percentile)",
+        "Progressive runs per 90 (percentile)",
+        "Accelerations per 90 (percentile)",
+    ],
+    "Centros": [
+        "Crosses per 90 (percentile)",
+        "Accurate crosses, % (percentile)",
+        "Successful crosses per 90 (percentile)",
+    ],
+    "Juego asociado": [
+        "Received passes per 90 (percentile)",
+        "Passes per 90 (percentile)",
+        "Accurate passes, % (percentile)",
+        "Successful passes per 90 (percentile)",
+        "Progressive passes per 90 (percentile)",
+        "Accurate progressive passes, % (percentile)",
+        "Successful progressive passes per 90 (percentile)",
+        "Smart passes per 90 (percentile)",
+        "Accurate smart passes, % (percentile)",
+        "Successful smart passes per 90 (percentile)",
+    ],
+    "Juego aéreo": [
+        "Aerial duels per 90 (percentile)",
+        "Aerial duels won, % (percentile)",
+        "Aerial duels won per 90 (percentile)",
+        "Head goals (percentile)",
+        "Head goals per 90 (percentile)",
+    ],
+    "1v1 en defensa": [
+        "Defensive duels per 90 (percentile)",
+        "Defensive duels won, % (percentile)",
+        "Defensive duels won per 90 (percentile)",
+    ],
+    "Defensa": [
+        "Successful defensive actions per 90 (percentile)",
+        "Defensive duels per 90 (percentile)",
+        "Defensive duels won, % (percentile)",
+        "Defensive duels won per 90 (percentile)",
+        "Sliding tackles per 90 (percentile)",
+        "PAdj Sliding tackles (percentile)",
+        "Interceptions per 90 (percentile)",
+        "PAdj Interceptions (percentile)",
+    ],
+    "Progresion de pelota": [
+        "Progressive passes per 90 (percentile)",
+        "Accurate progressive passes, % (percentile)",
+        "Successful progressive passes per 90 (percentile)",
+        "Progressive runs per 90 (percentile)",
+        "Accelerations per 90 (percentile)",
+    ],
+}
+
+# ======================================================
+# Helpers
+# ======================================================
+def safe_series(df, col):
+    if col not in df.columns:
+        return pd.Series(np.zeros(len(df)), index=df.index)
+    return pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+def weight_status(total):
+    if total < 1:
+        return "🔴 < 1"
+    if total > 1:
+        return "🟠 > 1"
+    return "🟢 = 1"
+
+# ======================================================
+# UI – Selección de puesto
+# ======================================================
+puesto = st.selectbox("Puesto", list(EXCELS_POR_PUESTO.keys()))
+excel_path = EXCELS_POR_PUESTO[puesto]
+
 @st.cache_data(show_spinner=False)
-def load_data(path: str) -> pd.DataFrame:
+def load_data(path):
     return pd.read_excel(path)
 
-df_raw = load_data(EXCEL_PATH).copy()
+df_raw = load_data(excel_path).copy()
 
-# =========================
-# Paso 1: Filtros
-# =========================
-# Alias "Liga" = "Pais competencia | Competencia | Año"
+# ======================================================
+# Filtros
+# ======================================================
 for col in ["Pais competencia", "Competencia", "Año"]:
     if col not in df_raw.columns:
         df_raw[col] = ""
 
 df_raw["Liga"] = (
-    df_raw["Pais competencia"].fillna("").astype(str)
+    df_raw["Pais competencia"].astype(str)
     + " | "
-    + df_raw["Competencia"].fillna("").astype(str)
+    + df_raw["Competencia"].astype(str)
     + " | "
-    + df_raw["Año"].fillna("").astype(str)
+    + df_raw["Año"].astype(str)
 )
 
-# Minutos
-if "Minutes played" not in df_raw.columns:
-    st.error("No existe la columna 'Minutes played' en el Excel.")
-    st.stop()
+df_raw["Minutos"] = pd.to_numeric(df_raw.get("Minutes played", 0), errors="coerce").fillna(0)
 
-df_raw["Minutos"] = pd.to_numeric(df_raw["Minutes played"], errors="coerce").fillna(0)
-
-# UI filtros
-c1, c2, c3 = st.columns([1.2, 1.2, 2])
-
+c1, c2 = st.columns(2)
 with c1:
-    min_minutos = int(df_raw["Minutos"].min()) if len(df_raw) else 0
-    max_minutos = int(df_raw["Minutos"].max()) if len(df_raw) else 0
-    minutos_min = st.slider("Minutos disputados (mín.)", min_value=min_minutos, max_value=max_minutos, value=min_minutos)
-
+    minutos_min = st.slider(
+        "Minutos mínimos",
+        int(df_raw["Minutos"].min()),
+        int(df_raw["Minutos"].max()),
+        int(df_raw["Minutos"].min()),
+    )
 with c2:
-    ligas = sorted(df_raw["Liga"].dropna().astype(str).unique().tolist())
-    liga_sel = st.selectbox("Liga", ligas, index=0 if ligas else None)
+    liga_sel = st.selectbox("Liga", sorted(df_raw["Liga"].unique()))
 
-with c3:
-    st.caption("Archivo")
-    st.code(EXCEL_PATH, language="text")
+df = df_raw[(df_raw["Minutos"] >= minutos_min) & (df_raw["Liga"] == liga_sel)].copy()
 
-# Aplico filtros
-df = df_raw.copy()
-df = df[df["Minutos"] >= minutos_min].copy()
-if liga_sel:
-    df = df[df["Liga"] == liga_sel].copy()
-
-# =========================
-# Paso 2: Reponderación
-# =========================
+# ======================================================
+# Reponderación
+# ======================================================
 st.divider()
-st.subheader("⚙️ Reponderación")
+st.subheader("⚙️ Pesos por atributo y métricas")
 
-# --- Definición de pesos base (tal cual tu modelo) ---
-metric_weights_by_attribute = {
-    "Gol y Finalización": {
-        "Goals (percentile)": 0.05,
-        "Goals per 90 (percentile)": 0.10,
-        "xG (percentile)": 0.10,
-        "xG per 90 (percentile)": 0.25,
-        "Goals - xG (percentile)": 0.10,
-        "Non-penalty goals (percentile)": 0.10,
-        "Non-penalty goals per 90 (percentile)": 0.15,
-        "Shots (percentile)": 0.02,
-        "Shots per 90 (percentile)": 0.03,
-        "Shots on target, % (percentile)": 0.02,
-        "Shots on target per 90 (percentile)": 0.03,
-        "Goal conversion, % (percentile)": 0.05,
-    },
-    "Asistencias y creación de chances": {
-        "Assists (percentile)": 0.05,
-        "Assists per 90 (percentile)": 0.10,
-        "xA (percentile)": 0.05,
-        "xA per 90 (percentile)": 0.05,
-        "Shot assists per 90 (percentile)": 0.05,
-        "Second assists per 90 (percentile)": 0.05,
-        "Third assists per 90 (percentile)": 0.00,
-        "Passes to penalty area per 90 (percentile)": 0.025,
-        "Accurate passes to penalty area, % (percentile)": 0.025,
-        "Successful Passes to Penalty area per 90 (percentile)": 0.15,
-        "Key passes per 90 (percentile)": 0.20,
-        "Deep completions per 90 (percentile)": 0.05,
-        "Successful Through passes per 90 (percentile)": 0.15,
-        "Touches in box per 90 (percentile)": 0.05,
-    },
-    "1v1 en ataque": {
-        "Dribbles per 90 (percentile)": 0.05,
-        "Successful dribbles, % (percentile)": 0.10,
-        "Successful dribbles per 90 (percentile)": 0.15,
-        "Offensive duels per 90 (percentile)": 0.05,
-        "Offensive duels won, % (percentile)": 0.40,
-        "Offensive duels won per 90 (percentile)": 0.25,
-    },
-    "Progresion de pelota": {
-        "Progressive passes per 90 (percentile)": 0.15,
-        "Accurate progressive passes, % (percentile)": 0.10,
-        "Successful progressive passes per 90 (percentile)": 0.40,
-        "Progressive runs per 90 (percentile)": 0.30,
-        "Accelerations per 90 (percentile)": 0.05,
-    },
-    "Juego asociado": {
-        "Received passes per 90 (percentile)": 0.10,
-        "Passes per 90 (percentile)": 0.05,
-        "Accurate passes, % (percentile)": 0.20,
-        "Successful passes per 90 (percentile)": 0.25,
-        "Smart passes per 90 (percentile)": 0.05,
-        "Accurate smart passes, % (percentile)": 0.10,
-        "Successful smart passes per 90 (percentile)": 0.25,
-    },
-    "Juego aéreo": {
-        "Aerial duels per 90 (percentile)": 0.10,
-        "Aerial duels won, % (percentile)": 0.45,
-        "Aerial duels won per 90 (percentile)": 0.30,
-        "Head goals (percentile)": 0.05,
-        "Head goals per 90 (percentile)": 0.10,
-    },
-    "1v1 en defensa": {
-        "Defensive duels per 90 (percentile)": 0.15,
-        "Defensive duels won, % (percentile)": 0.50,
-        "Defensive duels won per 90 (percentile)": 0.35,
-    },
-    "Defensa": {
-        "Successful defensive actions per 90 (percentile)": 0.25,
-        "Sliding tackles per 90 (percentile)": 0.05,
-        "PAdj Sliding tackles (percentile)": 0.15,
-        "Interceptions per 90 (percentile)": 0.10,
-        "PAdj Interceptions (percentile)": 0.15,
-        "Successful defensive actions per 90 per foul (percentile)": 0.25,
-        "Shots blocked per 90 (percentile)": 0.05,
-    },
-}
+user_metric_weights = {}
+attribute_totals = {}
 
-attribute_weights_final = {
-    "Gol y Finalización": 0.025,
-    "Asistencias y creación de chances": 0.05,
-    "1v1 en ataque": 0.075,
-    "Progresion de pelota": 0.125,
-    "Juego asociado": 0.15,
-    "Juego aéreo": 0.15,
-    "1v1 en defensa": 0.25,
-    "Defensa": 0.175,
-}
+for attr, metrics in ATRIBUTOS_METRICAS.items():
+    with st.expander(attr):
+        user_metric_weights[attr] = {}
+        total = 0
+        for m in metrics:
+            w = st.number_input(f"{m}", value=0.0, step=0.01, format="%.3f", key=f"{attr}_{m}")
+            user_metric_weights[attr][m] = w
+            total += w
 
-# UI: pesos editables (métricas -> atributos)
-st.markdown("**1) Pesos de métricas dentro de cada atributo**")
-user_metric_weights_by_attribute = {}
+        st.caption(f"Total pesos atributo: **{total:.2f} {weight_status(total)}**")
+        attribute_totals[attr] = total
 
-for attr, metrics_w in metric_weights_by_attribute.items():
-    with st.expander(attr, expanded=False):
-        user_metric_weights_by_attribute[attr] = {}
-        for metric, w in metrics_w.items():
-            key = f"mw__{attr}__{metric}"
-            user_metric_weights_by_attribute[attr][metric] = st.number_input(
-                label=metric,
-                value=float(w),
-                step=0.01,
-                format="%.3f",
-                key=key
-            )
-
-# UI: pesos editables (atributos -> puntaje final)
-st.markdown("**2) Pesos de atributos en el puntaje final**")
-user_attribute_weights_final = {}
-cols = st.columns(4)
-for i, (attr, w) in enumerate(attribute_weights_final.items()):
-    with cols[i % 4]:
-        key = f"aw__{attr}"
-        user_attribute_weights_final[attr] = st.number_input(
-            label=attr,
-            value=float(w),
-            step=0.01,
-            format="%.3f",
-            key=key
-        )
-
-# =========================
-# Cálculo reponderado
-# =========================
-def safe_series(dff: pd.DataFrame, col: str) -> pd.Series:
-    if col not in dff.columns:
-        return pd.Series(np.zeros(len(dff)), index=dff.index, dtype=float)
-    return pd.to_numeric(dff[col], errors="coerce").fillna(0.0)
-
-# Calculo atributos
-missing_metrics = []
-
-for attr, metrics_w in user_metric_weights_by_attribute.items():
-    acc = pd.Series(np.zeros(len(df)), index=df.index, dtype=float)
-    for metric, w in metrics_w.items():
-        if metric not in df.columns:
-            missing_metrics.append(metric)
-        acc = acc + (safe_series(df, metric) * float(w))
+# ======================================================
+# Cálculo atributos
+# ======================================================
+for attr, metrics_w in user_metric_weights.items():
+    acc = pd.Series(np.zeros(len(df)), index=df.index)
+    for m, w in metrics_w.items():
+        acc += safe_series(df, m) * w
     df[attr] = acc.round(2)
 
+# ======================================================
+# Pesos finales atributos
+# ======================================================
+st.divider()
+st.subheader("🎯 Pesos de atributos en el puntaje final")
+
+attr_weights = {}
+total_attr_weight = 0
+
+cols = st.columns(3)
+for i, attr in enumerate(ATRIBUTOS_METRICAS.keys()):
+    with cols[i % 3]:
+        w = st.number_input(attr, value=0.0, step=0.01, format="%.3f", key=f"final_{attr}")
+        attr_weights[attr] = w
+        total_attr_weight += w
+
+st.caption(f"Total pesos finales: **{total_attr_weight:.2f} {weight_status(total_attr_weight)}**")
+
+# ======================================================
 # Puntaje final
-puntaje = pd.Series(np.zeros(len(df)), index=df.index, dtype=float)
-for attr, w in user_attribute_weights_final.items():
-    puntaje = puntaje + (safe_series(df, attr) * float(w))
+# ======================================================
+puntaje = pd.Series(np.zeros(len(df)), index=df.index)
+for attr, w in attr_weights.items():
+    puntaje += safe_series(df, attr) * w
+
 df["Puntaje AAAJ"] = puntaje.round(2)
 
-if missing_metrics:
-    missing_unique = sorted(list(set(missing_metrics)))
-    st.warning(
-        "Faltan métricas en el Excel (se tomaron como 0 en el cálculo):\n\n- "
-        + "\n- ".join(missing_unique)
-    )
-
-# =========================
-# Output dataframe visible
-# =========================
+# ======================================================
+# Output
+# ======================================================
 st.divider()
-st.subheader("📋 DataFrame con nuevos puntajes")
+st.subheader("📋 Tabla final")
 
-columnas = [
-    "Player", "Team", "Team within selected timeframe", "Position", "Age", "Height",
-    "Birth country", "Passport country", "Contract expires", "Foot",
-    "Matches played", "Minutes played",
-    "Gol y Finalización", "Asistencias y creación de chances", "1v1 en ataque",
-    "Progresion de pelota", "Juego asociado", "Juego aéreo", "1v1 en defensa",
-    "Defensa", "Puntaje AAAJ"
+base_cols = [
+    "Player", "Team", "Position", "Age", "Minutes played",
+    *ATRIBUTOS_METRICAS.keys(),
+    "Puntaje AAAJ",
 ]
 
-cols_presentes = [c for c in columnas if c in df.columns]
-cols_faltantes = [c for c in columnas if c not in df.columns]
+cols_ok = [c for c in base_cols if c in df.columns]
 
-if cols_faltantes:
-    st.info("Columnas no encontradas en el Excel (no se muestran): " + ", ".join(cols_faltantes))
-
-st.dataframe(df[cols_presentes].sort_values("Puntaje AAAJ", ascending=False), use_container_width=True)
+st.dataframe(
+    df[cols_ok].sort_values("Puntaje AAAJ", ascending=False),
+    use_container_width=True
+)
