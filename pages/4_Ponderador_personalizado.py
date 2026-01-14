@@ -404,22 +404,155 @@ if missing_metrics:
 st.divider()
 st.subheader("📋 DataFrame con nuevos puntajes")
 
-columnas_base = [
-    "Player", "Team", "Team within selected timeframe", "Position", "Age", "Height",
-    "Birth country", "Passport country", "Contract expires", "Foot",
-    "Matches played", "Minutes played",
+# ======================================================
+# OUTPUT + FILTROS (EDAD / PASAPORTE / ALTURA) + RENOMBRES + ORDEN
+# Reemplazá TODO tu bloque actual desde:
+#   # ======================================================
+#   # Output dataframe visible
+#   ...
+# por este.
+# ======================================================
+
+st.divider()
+st.subheader("📋 DataFrame con nuevos puntajes")
+
+# -------------------------
+# 1) Renombres (aliases)
+# -------------------------
+rename_map = {
+    "Player": "Jugador",
+    "Team within selected timeframe": "Equipo",
+    "Position": "Puesto",
+    "Age": "Edad",
+    "Height": "Altura",
+    "Passport country": "Pasaporte",
+    "Foot": "Pierna",
+    "Minutes played": "Minutos",
+}
+
+# Columnas que explícitamente querés eliminar (si existen)
+drop_cols = [
+    "Team",
+    "Birth country",
+    "Contract expires",
+    "Matches played",
 ]
 
-columnas_modelo = ATRIBUTOS_ORDEN + ["Puntaje AAAJ"]
-columnas = columnas_base + columnas_modelo
+df_out = df.copy()
+df_out = df_out.drop(columns=[c for c in drop_cols if c in df_out.columns], errors="ignore")
+df_out = df_out.rename(columns={k: v for k, v in rename_map.items() if k in df_out.columns})
 
-cols_presentes = [c for c in columnas if c in df.columns]
-cols_faltantes = [c for c in columnas if c not in df.columns]
+# -------------------------
+# 2) Filtros arriba de la tabla
+# -------------------------
+# Helpers para sliders numéricos
+def _num_series(dff: pd.DataFrame, col: str) -> pd.Series:
+    if col not in dff.columns:
+        return pd.Series([], dtype=float)
+    return pd.to_numeric(dff[col], errors="coerce")
 
-if cols_faltantes:
-    st.info("Columnas no encontradas en el Excel (no se muestran): " + ", ".join(cols_faltantes))
+f1, f2, f3 = st.columns([1.2, 1.2, 1.2])
 
-st.dataframe(
-    df[cols_presentes].sort_values("Puntaje AAAJ", ascending=False),
-    use_container_width=True
-)
+# Edad (range slider)
+edad_s = _num_series(df_out, "Edad")
+if "Edad" in df_out.columns and edad_s.notna().any():
+    edad_min = int(np.floor(edad_s.min()))
+    edad_max = int(np.ceil(edad_s.max()))
+else:
+    edad_min, edad_max = 0, 0
+
+with f1:
+    if edad_max > edad_min:
+        edad_range = st.slider(
+            "Edad (rango)",
+            min_value=edad_min,
+            max_value=edad_max,
+            value=(edad_min, edad_max),
+        )
+    else:
+        edad_range = (edad_min, edad_max)
+        st.slider("Edad (rango)", min_value=0, max_value=0, value=(0, 0), disabled=True)
+
+# Pasaporte (selectbox que soporta dobles nacionalidades)
+with f2:
+    if "Pasaporte" in df_out.columns:
+        # Explota "Argentina, Croacia" -> ["Argentina", "Croacia"] para armar el listado
+        passports_raw = df_out["Pasaporte"].fillna("").astype(str)
+        unique_tokens = set()
+        for v in passports_raw.tolist():
+            for tok in v.split(","):
+                tok = tok.strip()
+                if tok:
+                    unique_tokens.add(tok)
+
+        passport_options = ["— Todos —"] + sorted(unique_tokens)
+        passport_sel = st.selectbox("Pasaporte", passport_options, index=0)
+    else:
+        passport_sel = "— Todos —"
+        st.selectbox("Pasaporte", ["— Todos —"], index=0, disabled=True)
+
+# Altura mínima
+altura_s = _num_series(df_out, "Altura")
+if "Altura" in df_out.columns and altura_s.notna().any():
+    altura_min_allowed = int(np.floor(altura_s.min()))
+    altura_max_allowed = int(np.ceil(altura_s.max()))
+else:
+    altura_min_allowed, altura_max_allowed = 0, 0
+
+with f3:
+    if altura_max_allowed > 0:
+        altura_min = st.slider(
+            "Altura mínima",
+            min_value=altura_min_allowed,
+            max_value=altura_max_allowed,
+            value=altura_min_allowed,
+        )
+    else:
+        altura_min = 0
+        st.slider("Altura mínima", min_value=0, max_value=0, value=0, disabled=True)
+
+# Aplicación de filtros
+df_show = df_out.copy()
+
+# Edad (range)
+if "Edad" in df_show.columns and edad_s.notna().any():
+    df_show["Edad"] = pd.to_numeric(df_show["Edad"], errors="coerce")
+    df_show = df_show[
+        df_show["Edad"].fillna(-999).between(edad_range[0], edad_range[1], inclusive="both")
+    ].copy()
+
+# Altura mínima
+if "Altura" in df_show.columns and altura_s.notna().any():
+    df_show["Altura"] = pd.to_numeric(df_show["Altura"], errors="coerce")
+    df_show = df_show[df_show["Altura"].fillna(-999) >= float(altura_min)].copy()
+
+# Pasaporte: matcheo por token (contiene), soporta dobles nacionalidades
+if passport_sel != "— Todos —" and "Pasaporte" in df_show.columns:
+    p = passport_sel.strip().lower()
+
+    def has_passport(cell: str) -> bool:
+        if cell is None:
+            return False
+        toks = [t.strip().lower() for t in str(cell).split(",")]
+        return p in toks
+
+    df_show = df_show[df_show["Pasaporte"].apply(has_passport)].copy()
+
+# -------------------------
+# 3) Orden final de columnas
+# Jugador, Equipo, Minutos, Puntaje AAAJ, ATRIBUTOS y todo lo demás
+# -------------------------
+priority = ["Jugador", "Equipo", "Minutos", "Puntaje AAAJ"] + ATRIBUTOS_ORDEN
+
+# Ojo: ATRIBUTOS_ORDEN todavía está con nombres de atributos (no renombrados), se mantienen igual
+present_priority = [c for c in priority if c in df_show.columns]
+rest = [c for c in df_show.columns if c not in present_priority]
+final_cols = present_priority + rest
+
+# -------------------------
+# 4) Tabla
+# -------------------------
+if "Puntaje AAAJ" in df_show.columns:
+    df_show = df_show.sort_values("Puntaje AAAJ", ascending=False)
+
+st.dataframe(df_show[final_cols], use_container_width=True)
