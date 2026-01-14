@@ -120,7 +120,6 @@ def safe_series(dff: pd.DataFrame, col: str) -> pd.Series:
     return pd.to_numeric(dff[col], errors="coerce").fillna(0.0)
 
 def weight_badge(total: float) -> str:
-    # tolerancia para floats
     if abs(total - 1.0) <= 1e-9:
         return "🟢 = 1"
     if total < 1.0:
@@ -142,6 +141,7 @@ def list_presets_for_position(puesto: str):
     folder = Path("configs") / puesto
     if not folder.exists():
         return []
+    # excluye .gitkeep (no coincide por extensión)
     return sorted([p.stem for p in folder.glob("*.json")])
 
 def load_preset(puesto: str, preset_name: str):
@@ -169,7 +169,7 @@ def save_preset(puesto: str, preset_name: str, metric_weights: dict, attribute_w
 # ======================================================
 cA, cB = st.columns([1.2, 1.8])
 with cA:
-    puesto = st.selectbox("Puesto", ATRIBUTOS_METRICAS.keys() and list(EXCELS_POR_PUESTO.keys()))
+    puesto = st.selectbox("Puesto", list(EXCELS_POR_PUESTO.keys()))
 with cB:
     excel_path = EXCELS_POR_PUESTO.get(puesto, "")
     st.caption("Archivo")
@@ -225,7 +225,7 @@ with c2:
 
 with c3:
     st.caption("Presets (por puesto)")
-    st.info("Los presets se leen/escriben en:  `configs/<puesto>/*.json`")
+    st.info("Se leen/escriben en:  `configs/<puesto>/*.json`")
 
 df = df_raw.copy()
 df = df[df["Minutos"] >= minutos_min].copy()
@@ -241,7 +241,6 @@ st.subheader("📂 Presets del puesto")
 presets = list_presets_for_position(puesto)
 preset_sel = st.selectbox("Cargar preset", ["— Sin preset —"] + presets, index=0, key=f"preset_sel__{puesto}")
 
-# Botón explícito para cargar (evita recargas raras)
 cL, cS = st.columns([1, 1])
 
 with cL:
@@ -250,13 +249,11 @@ with cL:
         if not preset:
             st.error("No se pudo leer el preset.")
         else:
-            # 1) Métricas
             mw = preset.get("metric_weights", {})
             for attr, metrics in mw.items():
                 for metric, val in metrics.items():
                     st.session_state[f"mw__{attr}__{metric}"] = float(val)
 
-            # 2) Atributos finales
             aw = preset.get("attribute_weights", {})
             for attr, val in aw.items():
                 st.session_state[f"aw__{attr}"] = float(val)
@@ -277,7 +274,6 @@ with cS:
                 if out_path.exists() and not preset_overwrite:
                     st.error("Ya existe un preset con ese nombre. Marcá 'Sobrescribir' o usá otro nombre.")
                 else:
-                    # Vamos a guardar lo que el usuario tenga en session_state (o 0 si no existe)
                     metric_weights_to_save = {}
                     for attr, metrics in ATRIBUTOS_METRICAS.items():
                         metric_weights_to_save[attr] = {}
@@ -316,17 +312,22 @@ for attr in ATRIBUTOS_ORDEN:
     with st.expander(attr, expanded=False):
         user_metric_weights_by_attribute[attr] = {}
 
+        # --- 3 COLUMNAS ---
+        cols = st.columns(3)
         total_attr = 0.0
-        for metric in metrics:
-            key = f"mw__{attr}__{metric}"
-            default_val = float(st.session_state.get(key, 0.0))
-            w = st.number_input(
-                label=metric,
-                value=default_val,
-                step=0.01,
-                format="%.3f",
-                key=key
-            )
+
+        for i, metric in enumerate(metrics):
+            with cols[i % 3]:
+                key = f"mw__{attr}__{metric}"
+                default_val = float(st.session_state.get(key, 0.0))
+                w = st.number_input(
+                    label=metric,
+                    value=default_val,
+                    step=0.01,
+                    format="%.3f",
+                    key=key
+                )
+
             user_metric_weights_by_attribute[attr][metric] = float(w)
             total_attr += float(w)
 
@@ -357,7 +358,6 @@ st.caption(f"Total pesos finales: **{total_final:.3f} {weight_badge(total_final)
 # ======================================================
 # Paso 4: Cálculo reponderado
 # ======================================================
-# Atributos
 for attr, metrics_w in user_metric_weights_by_attribute.items():
     acc = pd.Series(np.zeros(len(df)), index=df.index, dtype=float)
     for metric, w in metrics_w.items():
@@ -366,7 +366,6 @@ for attr, metrics_w in user_metric_weights_by_attribute.items():
         acc = acc + (safe_series(df, metric) * float(w))
     df[attr] = acc.round(2)
 
-# Puntaje final
 puntaje = pd.Series(np.zeros(len(df)), index=df.index, dtype=float)
 for attr, w in user_attribute_weights_final.items():
     puntaje = puntaje + (safe_series(df, attr) * float(w))
@@ -385,7 +384,6 @@ if missing_metrics:
 st.divider()
 st.subheader("📋 DataFrame con nuevos puntajes")
 
-# Mantengo tu idea: base + atributos + puntaje
 columnas_base = [
     "Player", "Team", "Team within selected timeframe", "Position", "Age", "Height",
     "Birth country", "Passport country", "Contract expires", "Foot",
@@ -393,7 +391,6 @@ columnas_base = [
 ]
 
 columnas_modelo = ATRIBUTOS_ORDEN + ["Puntaje AAAJ"]
-
 columnas = columnas_base + columnas_modelo
 
 cols_presentes = [c for c in columnas if c in df.columns]
