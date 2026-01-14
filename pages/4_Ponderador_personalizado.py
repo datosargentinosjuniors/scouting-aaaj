@@ -170,37 +170,16 @@ def delete_preset(puesto: str, preset_name: str) -> bool:
     return False
 
 # ======================================================
-# UI: Puesto + Archivo + Filtros + Presets (ALINEADO)
+# UI: Puesto + Minutos + Liga (MISMA FILA) + Presets (2do NIVEL)
 # ======================================================
-# 1) Primera fila: Puesto | Liga | Presets
-col1, col2, col3 = st.columns([1.2, 1.2, 1.2])
+row1_c1, row1_c2, row1_c3 = st.columns([1.2, 1.2, 1.6])
 
-with col1:
+with row1_c1:
     puesto = st.selectbox("Puesto", list(EXCELS_POR_PUESTO.keys()))
 
-# excel_path depende del puesto
 excel_path = EXCELS_POR_PUESTO.get(puesto, "")
 
-with col2:
-    # Liga se llena luego, pero dejamos el placeholder prolijo
-    st.write("")  # pequeño aire para que el layout quede parejo
-
-with col3:
-    st.markdown("**Presets**")
-    presets = list_presets_for_position(puesto)
-    preset_sel = st.selectbox(
-        "Cargar preset",
-        ["— Sin preset —"] + presets,
-        index=0,
-        key=f"preset_sel__{puesto}",
-        label_visibility="collapsed"
-    )
-
-# 2) Segunda fila: Archivo (full width)
-st.caption("Archivo")
-st.code(excel_path, language="text")
-
-# Validación del archivo
+# Validación del archivo (sin mostrarlo)
 if not excel_path:
     st.error("No hay archivo configurado para este puesto.")
     st.stop()
@@ -232,10 +211,7 @@ if "Minutes played" not in df_raw.columns:
 
 df_raw["Minutos"] = pd.to_numeric(df_raw["Minutes played"], errors="coerce").fillna(0)
 
-# 3) Tercera fila: Minutos | Liga | (espacio/presets ya arriba)
-col1b, col2b, col3b = st.columns([1.2, 1.2, 1.2])
-
-with col1b:
+with row1_c2:
     min_minutos = int(df_raw["Minutos"].min()) if len(df_raw) else 0
     max_minutos = int(df_raw["Minutos"].max()) if len(df_raw) else 0
     minutos_min = st.slider(
@@ -245,12 +221,9 @@ with col1b:
         value=min_minutos,
     )
 
-with col2b:
+with row1_c3:
     ligas = sorted(df_raw["Liga"].dropna().astype(str).unique().tolist())
     liga_sel = st.selectbox("Liga", ligas, index=0 if ligas else None)
-
-with col3b:
-    st.write("")  # mantiene la grilla alineada visualmente
 
 # Aplico filtros
 df = df_raw.copy()
@@ -259,9 +232,22 @@ if liga_sel:
     df = df[df["Liga"] == liga_sel].copy()
 
 # ======================================================
-# Paso 2: Presets (cargar/guardar/borrar) - ALINEADO con la grilla
+# Presets (2do nivel - ancho completo)
 # ======================================================
-btn1, btn2, btn3 = st.columns([1.2, 1.2, 1.2])
+st.markdown("### Presets")
+
+presets = list_presets_for_position(puesto)
+preset_sel = st.selectbox(
+    "Cargar preset",
+    ["— Sin preset —"] + presets,
+    index=0,
+    key=f"preset_sel__{puesto}",
+)
+
+# ======================================================
+# Botones presets (ancho completo)
+# ======================================================
+btn1, btn2, btn3 = st.columns([1, 1, 1])
 
 with btn1:
     if st.button("📥 Aplicar preset", use_container_width=True, disabled=(preset_sel == "— Sin preset —")):
