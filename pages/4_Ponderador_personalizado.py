@@ -13,7 +13,7 @@ st.title("🧩 Reponderador de jugadores – Modelo base")
 # Excels por puesto
 # ======================================================
 EXCELS_POR_PUESTO = {
-    "Defensores centrales": "data/final_defensoresCentrales_todos_20252026.xlsx",
+    "Defensores centrales": "data/todos_defensoresCentrales_todos_20252026.xlsx",
     "Laterales": "data/final_laterales_todos_20252026.xlsx",
     "Volantes defensivos": "data/final_volantesDefensivos_todos20252026.xlsx",
     "Volantes mixtos": "data/final_volantesMixtos_todos_20252026.xlsx",
