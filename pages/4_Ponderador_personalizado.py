@@ -170,15 +170,35 @@ def delete_preset(puesto: str, preset_name: str) -> bool:
     return False
 
 # ======================================================
-# UI: Puesto y archivo
+# UI: Puesto + Archivo + Filtros + Presets (ALINEADO)
 # ======================================================
-cA, cB = st.columns([1.2, 1.8])
-with cA:
+# 1) Primera fila: Puesto | Liga | Presets
+col1, col2, col3 = st.columns([1.2, 1.2, 1.2])
+
+with col1:
     puesto = st.selectbox("Puesto", list(EXCELS_POR_PUESTO.keys()))
-with cB:
-    excel_path = EXCELS_POR_PUESTO.get(puesto, "")
-    st.caption("Archivo")
-    st.code(excel_path, language="text")
+
+# excel_path depende del puesto
+excel_path = EXCELS_POR_PUESTO.get(puesto, "")
+
+with col2:
+    # Liga se llena luego, pero dejamos el placeholder prolijo
+    st.write("")  # pequeño aire para que el layout quede parejo
+
+with col3:
+    st.markdown("**Presets**")
+    presets = list_presets_for_position(puesto)
+    preset_sel = st.selectbox(
+        "Cargar preset",
+        ["— Sin preset —"] + presets,
+        index=0,
+        key=f"preset_sel__{puesto}",
+        label_visibility="collapsed"
+    )
+
+# 2) Segunda fila: Archivo (full width)
+st.caption("Archivo")
+st.code(excel_path, language="text")
 
 # Validación del archivo
 if not excel_path:
@@ -212,9 +232,10 @@ if "Minutes played" not in df_raw.columns:
 
 df_raw["Minutos"] = pd.to_numeric(df_raw["Minutes played"], errors="coerce").fillna(0)
 
-c1, c2, c3 = st.columns([1.2, 1.2, 2])
+# 3) Tercera fila: Minutos | Liga | (espacio/presets ya arriba)
+col1b, col2b, col3b = st.columns([1.2, 1.2, 1.2])
 
-with c1:
+with col1b:
     min_minutos = int(df_raw["Minutos"].min()) if len(df_raw) else 0
     max_minutos = int(df_raw["Minutos"].max()) if len(df_raw) else 0
     minutos_min = st.slider(
@@ -224,26 +245,25 @@ with c1:
         value=min_minutos,
     )
 
-with c2:
+with col2b:
     ligas = sorted(df_raw["Liga"].dropna().astype(str).unique().tolist())
     liga_sel = st.selectbox("Liga", ligas, index=0 if ligas else None)
 
-with c3:
-    st.caption("Presets")
-    presets = list_presets_for_position(puesto)
-    preset_sel = st.selectbox("Cargar preset", ["— Sin preset —"] + presets, index=0, key=f"preset_sel__{puesto}")
+with col3b:
+    st.write("")  # mantiene la grilla alineada visualmente
 
+# Aplico filtros
 df = df_raw.copy()
 df = df[df["Minutos"] >= minutos_min].copy()
 if liga_sel:
     df = df[df["Liga"] == liga_sel].copy()
 
 # ======================================================
-# Paso 2: Presets (cargar/guardar/borrar)
+# Paso 2: Presets (cargar/guardar/borrar) - ALINEADO con la grilla
 # ======================================================
-cL, cS, cD = st.columns([1, 1, 1])
+btn1, btn2, btn3 = st.columns([1.2, 1.2, 1.2])
 
-with cL:
+with btn1:
     if st.button("📥 Aplicar preset", use_container_width=True, disabled=(preset_sel == "— Sin preset —")):
         preset = load_preset(puesto, preset_sel)
         if not preset:
@@ -261,7 +281,7 @@ with cL:
             st.success(f"Preset aplicado: {preset_sel}")
             st.rerun()
 
-with cS:
+with btn2:
     with st.popover("💾 Guardar preset", use_container_width=True):
         preset_name_raw = st.text_input("Nombre del preset (solo para este puesto)", value="")
         preset_overwrite = st.checkbox("Sobrescribir si existe", value=False)
@@ -286,7 +306,7 @@ with cS:
                         key = f"aw__{attr}"
                         attribute_weights_to_save[attr] = float(st.session_state.get(key, 0.0))
 
-                    saved = save_preset(
+                    save_preset(
                         puesto=puesto,
                         preset_name=preset_name,
                         metric_weights=metric_weights_to_save,
@@ -295,7 +315,7 @@ with cS:
                     st.success(f"Preset guardado: {preset_name}.json")
                     st.rerun()
 
-with cD:
+with btn3:
     with st.popover("🗑️ Borrar preset", use_container_width=True):
         if preset_sel == "— Sin preset —":
             st.info("Elegí un preset para poder borrarlo.")
