@@ -320,10 +320,6 @@ if jugador_a != jugador_b:
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
-    for label in ax.get_yticklabels():
-        if font_prop:
-            label.set_fontproperties(font_prop)
-
     st.pyplot(fig, use_container_width=True)
 else:
     st.info("Elegí dos jugadores distintos para comparar.")
