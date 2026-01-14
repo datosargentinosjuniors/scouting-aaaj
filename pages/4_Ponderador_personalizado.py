@@ -292,12 +292,6 @@ if jugador_a != jugador_b:
     COLOR_A = "#C62828"
     COLOR_B = "#5E35B1"
 
-    FONT_PATH = "assets/fonts/ProximaNova-Regular.ttf"
-    try:
-        font_prop = font_manager.FontProperties(fname=FONT_PATH)
-    except:
-        font_prop = None
-
     x = np.arange(len(atributos_tabla))
     width = 0.38
 
@@ -313,14 +307,14 @@ if jugador_a != jugador_b:
     )
 
     ax.set_ylim(0, 100)
-    ax.set_ylabel("Puntaje", fontproperties=font_prop)
+    ax.set_ylabel("Puntaje")
 
     title = (
         f"{jugador_a} | {int(row_a['Minutos'])} min | {row_a['Puntaje AAAJ']:.1f}\n"
         f"{jugador_b} | {int(row_b['Minutos'])} min | {row_b['Puntaje AAAJ']:.1f}"
     )
 
-    ax.set_title(title, fontproperties="Proxima Nova", fontsize=14, pad=20)
+    ax.set_title(title, fontsize=14, pad=20)
 
     ax.grid(axis="y", alpha=0.3)
     ax.spines["top"].set_visible(False)
