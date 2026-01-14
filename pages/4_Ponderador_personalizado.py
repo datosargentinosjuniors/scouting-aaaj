@@ -320,7 +320,7 @@ if jugador_a != jugador_b:
         f"{jugador_b} | {int(row_b['Minutos'])} min | {row_b['Puntaje AAAJ']:.1f}"
     )
 
-    ax.set_title(title, fontproperties=font_prop, fontsize=14, pad=20)
+    ax.set_title(title, fontproperties="Proxima Nova", fontsize=14, pad=20)
 
     ax.grid(axis="y", alpha=0.3)
     ax.spines["top"].set_visible(False)
