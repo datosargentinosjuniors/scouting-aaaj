@@ -303,7 +303,6 @@ if jugador_a != jugador_b:
     ax.set_xticks(x)
     ax.set_xticklabels(
         atributos_tabla, rotation=30, ha="right",
-        fontproperties=font_prop
     )
 
     ax.set_ylim(0, 100)
