@@ -108,7 +108,23 @@ ATRIBUTOS_METRICAS = {
         "Accelerations per 90 (percentile)",
     ],
 }
-ATRIBUTOS_ORDEN = list(ATRIBUTOS_METRICAS.keys())
+
+ATRIBUTOS_ALIAS = {
+    "Gol y Finalización": "Finalización",
+    "Asistencias y creación de chances": "Chances",
+}
+
+ATRIBUTOS_ORDEN = [
+    "Gol y Finalización",
+    "Asistencias y creación de chances",
+    "1v1 en ataque",
+    "Juego asociado",
+    "Progresion de pelota",
+    "Centros",
+    "Juego aéreo",
+    "1v1 en defensa",
+    "Defensa",
+]
 
 # ======================================================
 # Helpers
@@ -258,9 +274,16 @@ rename_map = {
 
 df_out = df_out.rename(columns=rename_map)
 
+df_out = df_out.rename(columns=ATRIBUTOS_ALIAS)
+
+atributos_tabla = [
+    "Finalización", "Chances", "1v1 en ataque", "Juego asociado",
+    "Progresion de pelota", "Centros", "Juego aéreo", "1v1 en defensa", "Defensa"
+]
+
 final_cols = (
     ["Jugador", "Equipo", "Minutos", "Puntaje AAAJ"]
-    + ATRIBUTOS_ORDEN
+    + atributos_tabla
     + ["Puesto", "Edad", "Altura", "Pasaporte", "Pierna"]
 )
 
