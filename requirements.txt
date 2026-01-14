@@ -11,3 +11,4 @@ selenium
 webdriver-manager
 numpy
 IPython
+pyarrow
