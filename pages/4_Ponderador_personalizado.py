@@ -2,15 +2,18 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import json
+from pathlib import Path
+import re
 
 # ======================================================
 # Config
 # ======================================================
-st.set_page_config(page_title="🧩 Reponderador multi-puesto", layout="wide")
-st.title("🧩 Reponderador de jugadores – Modelo base")
+st.set_page_config(page_title="🧩 Ponderador personalizado", layout="wide")
+st.title("🧩 Ponderador personalizado (multi-puesto)")
 
 # ======================================================
-# Excels por puesto
+# Excels por puesto (MAPPING ACTUALIZADO)
 # ======================================================
 EXCELS_POR_PUESTO = {
     "Defensores centrales": "data/todos_defensoresCentrales_todos_20252026.xlsx",
@@ -106,135 +109,300 @@ ATRIBUTOS_METRICAS = {
     ],
 }
 
+ATRIBUTOS_ORDEN = list(ATRIBUTOS_METRICAS.keys())
+
 # ======================================================
 # Helpers
 # ======================================================
-def safe_series(df, col):
-    if col not in df.columns:
-        return pd.Series(np.zeros(len(df)), index=df.index)
-    return pd.to_numeric(df[col], errors="coerce").fillna(0)
+def safe_series(dff: pd.DataFrame, col: str) -> pd.Series:
+    if col not in dff.columns:
+        return pd.Series(np.zeros(len(dff)), index=dff.index, dtype=float)
+    return pd.to_numeric(dff[col], errors="coerce").fillna(0.0)
 
-def weight_status(total):
-    if total < 1:
+def weight_badge(total: float) -> str:
+    # tolerancia para floats
+    if abs(total - 1.0) <= 1e-9:
+        return "🟢 = 1"
+    if total < 1.0:
         return "🔴 < 1"
-    if total > 1:
-        return "🟠 > 1"
-    return "🟢 = 1"
+    return "🟠 > 1"
 
-# ======================================================
-# UI – Selección de puesto
-# ======================================================
-puesto = st.selectbox("Puesto", list(EXCELS_POR_PUESTO.keys()))
-excel_path = EXCELS_POR_PUESTO[puesto]
+def slugify(name: str) -> str:
+    name = name.strip().lower()
+    name = re.sub(r"\s+", "_", name)
+    name = re.sub(r"[^a-z0-9_]+", "", name)
+    name = re.sub(r"_+", "_", name).strip("_")
+    return name or "preset"
 
 @st.cache_data(show_spinner=False)
-def load_data(path):
+def load_data(path: str) -> pd.DataFrame:
     return pd.read_excel(path)
+
+def list_presets_for_position(puesto: str):
+    folder = Path("configs") / puesto
+    if not folder.exists():
+        return []
+    return sorted([p.stem for p in folder.glob("*.json")])
+
+def load_preset(puesto: str, preset_name: str):
+    path = Path("configs") / puesto / f"{preset_name}.json"
+    if not path.exists():
+        return None
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def save_preset(puesto: str, preset_name: str, metric_weights: dict, attribute_weights: dict):
+    folder = Path("configs") / puesto
+    folder.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "puesto": puesto,
+        "metric_weights": metric_weights,
+        "attribute_weights": attribute_weights,
+    }
+    out_path = folder / f"{preset_name}.json"
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+    return str(out_path)
+
+# ======================================================
+# UI: Puesto y archivo
+# ======================================================
+cA, cB = st.columns([1.2, 1.8])
+with cA:
+    puesto = st.selectbox("Puesto", ATRIBUTOS_METRICAS.keys() and list(EXCELS_POR_PUESTO.keys()))
+with cB:
+    excel_path = EXCELS_POR_PUESTO.get(puesto, "")
+    st.caption("Archivo")
+    st.code(excel_path, language="text")
+
+# Validación del archivo
+if not excel_path:
+    st.error("No hay archivo configurado para este puesto.")
+    st.stop()
+
+if not Path(excel_path).exists():
+    st.error(f"No se encontró el archivo:\n{excel_path}")
+    st.stop()
 
 df_raw = load_data(excel_path).copy()
 
 # ======================================================
-# Filtros
+# Paso 1: Filtros (Minutos + Liga)
 # ======================================================
 for col in ["Pais competencia", "Competencia", "Año"]:
     if col not in df_raw.columns:
         df_raw[col] = ""
 
 df_raw["Liga"] = (
-    df_raw["Pais competencia"].astype(str)
+    df_raw["Pais competencia"].fillna("").astype(str)
     + " | "
-    + df_raw["Competencia"].astype(str)
+    + df_raw["Competencia"].fillna("").astype(str)
     + " | "
-    + df_raw["Año"].astype(str)
+    + df_raw["Año"].fillna("").astype(str)
 )
 
-df_raw["Minutos"] = pd.to_numeric(df_raw.get("Minutes played", 0), errors="coerce").fillna(0)
+if "Minutes played" not in df_raw.columns:
+    st.error("No existe la columna 'Minutes played' en el Excel.")
+    st.stop()
 
-c1, c2 = st.columns(2)
+df_raw["Minutos"] = pd.to_numeric(df_raw["Minutes played"], errors="coerce").fillna(0)
+
+c1, c2, c3 = st.columns([1.2, 1.2, 2])
+
 with c1:
+    min_minutos = int(df_raw["Minutos"].min()) if len(df_raw) else 0
+    max_minutos = int(df_raw["Minutos"].max()) if len(df_raw) else 0
     minutos_min = st.slider(
-        "Minutos mínimos",
-        int(df_raw["Minutos"].min()),
-        int(df_raw["Minutos"].max()),
-        int(df_raw["Minutos"].min()),
+        "Minutos disputados (mín.)",
+        min_value=min_minutos,
+        max_value=max_minutos,
+        value=min_minutos,
     )
-with c2:
-    liga_sel = st.selectbox("Liga", sorted(df_raw["Liga"].unique()))
 
-df = df_raw[(df_raw["Minutos"] >= minutos_min) & (df_raw["Liga"] == liga_sel)].copy()
+with c2:
+    ligas = sorted(df_raw["Liga"].dropna().astype(str).unique().tolist())
+    liga_sel = st.selectbox("Liga", ligas, index=0 if ligas else None)
+
+with c3:
+    st.caption("Presets (por puesto)")
+    st.info("Los presets se leen/escriben en:  `configs/<puesto>/*.json`")
+
+df = df_raw.copy()
+df = df[df["Minutos"] >= minutos_min].copy()
+if liga_sel:
+    df = df[df["Liga"] == liga_sel].copy()
 
 # ======================================================
-# Reponderación
+# Paso 2: Presets (cargar/guardar)
 # ======================================================
 st.divider()
-st.subheader("⚙️ Pesos por atributo y métricas")
+st.subheader("📂 Presets del puesto")
 
-user_metric_weights = {}
-attribute_totals = {}
+presets = list_presets_for_position(puesto)
+preset_sel = st.selectbox("Cargar preset", ["— Sin preset —"] + presets, index=0, key=f"preset_sel__{puesto}")
 
-for attr, metrics in ATRIBUTOS_METRICAS.items():
-    with st.expander(attr):
-        user_metric_weights[attr] = {}
-        total = 0
-        for m in metrics:
-            w = st.number_input(f"{m}", value=0.0, step=0.01, format="%.3f", key=f"{attr}_{m}")
-            user_metric_weights[attr][m] = w
-            total += w
+# Botón explícito para cargar (evita recargas raras)
+cL, cS = st.columns([1, 1])
 
-        st.caption(f"Total pesos atributo: **{total:.2f} {weight_status(total)}**")
-        attribute_totals[attr] = total
+with cL:
+    if st.button("📥 Aplicar preset", use_container_width=True, disabled=(preset_sel == "— Sin preset —")):
+        preset = load_preset(puesto, preset_sel)
+        if not preset:
+            st.error("No se pudo leer el preset.")
+        else:
+            # 1) Métricas
+            mw = preset.get("metric_weights", {})
+            for attr, metrics in mw.items():
+                for metric, val in metrics.items():
+                    st.session_state[f"mw__{attr}__{metric}"] = float(val)
+
+            # 2) Atributos finales
+            aw = preset.get("attribute_weights", {})
+            for attr, val in aw.items():
+                st.session_state[f"aw__{attr}"] = float(val)
+
+            st.success(f"Preset aplicado: {preset_sel}")
+            st.rerun()
+
+with cS:
+    with st.popover("💾 Guardar preset", use_container_width=True):
+        preset_name_raw = st.text_input("Nombre del preset (solo para este puesto)", value="")
+        preset_overwrite = st.checkbox("Sobrescribir si existe", value=False)
+        if st.button("Guardar ahora", type="primary", use_container_width=True):
+            if not preset_name_raw.strip():
+                st.error("Poné un nombre para el preset.")
+            else:
+                preset_name = slugify(preset_name_raw)
+                out_path = Path("configs") / puesto / f"{preset_name}.json"
+                if out_path.exists() and not preset_overwrite:
+                    st.error("Ya existe un preset con ese nombre. Marcá 'Sobrescribir' o usá otro nombre.")
+                else:
+                    # Vamos a guardar lo que el usuario tenga en session_state (o 0 si no existe)
+                    metric_weights_to_save = {}
+                    for attr, metrics in ATRIBUTOS_METRICAS.items():
+                        metric_weights_to_save[attr] = {}
+                        for m in metrics:
+                            key = f"mw__{attr}__{m}"
+                            metric_weights_to_save[attr][m] = float(st.session_state.get(key, 0.0))
+
+                    attribute_weights_to_save = {}
+                    for attr in ATRIBUTOS_ORDEN:
+                        key = f"aw__{attr}"
+                        attribute_weights_to_save[attr] = float(st.session_state.get(key, 0.0))
+
+                    saved = save_preset(
+                        puesto=puesto,
+                        preset_name=preset_name,
+                        metric_weights=metric_weights_to_save,
+                        attribute_weights=attribute_weights_to_save,
+                    )
+                    st.success(f"Preset guardado en: {saved}")
+                    st.rerun()
 
 # ======================================================
-# Cálculo atributos
+# Paso 3: Reponderación (pesos editables + contadores)
 # ======================================================
-for attr, metrics_w in user_metric_weights.items():
-    acc = pd.Series(np.zeros(len(df)), index=df.index)
-    for m, w in metrics_w.items():
-        acc += safe_series(df, m) * w
+st.divider()
+st.subheader("⚙️ Reponderación")
+
+st.markdown("**1) Pesos de métricas dentro de cada atributo**")
+
+user_metric_weights_by_attribute = {}
+missing_metrics = []
+
+for attr in ATRIBUTOS_ORDEN:
+    metrics = ATRIBUTOS_METRICAS[attr]
+
+    with st.expander(attr, expanded=False):
+        user_metric_weights_by_attribute[attr] = {}
+
+        total_attr = 0.0
+        for metric in metrics:
+            key = f"mw__{attr}__{metric}"
+            default_val = float(st.session_state.get(key, 0.0))
+            w = st.number_input(
+                label=metric,
+                value=default_val,
+                step=0.01,
+                format="%.3f",
+                key=key
+            )
+            user_metric_weights_by_attribute[attr][metric] = float(w)
+            total_attr += float(w)
+
+        st.caption(f"Total pesos del atributo: **{total_attr:.3f} {weight_badge(total_attr)}**")
+
+st.markdown("**2) Pesos de atributos en el puntaje final**")
+
+user_attribute_weights_final = {}
+cols = st.columns(3)
+total_final = 0.0
+
+for i, attr in enumerate(ATRIBUTOS_ORDEN):
+    with cols[i % 3]:
+        key = f"aw__{attr}"
+        default_val = float(st.session_state.get(key, 0.0))
+        w = st.number_input(
+            label=attr,
+            value=default_val,
+            step=0.01,
+            format="%.3f",
+            key=key
+        )
+        user_attribute_weights_final[attr] = float(w)
+        total_final += float(w)
+
+st.caption(f"Total pesos finales: **{total_final:.3f} {weight_badge(total_final)}**")
+
+# ======================================================
+# Paso 4: Cálculo reponderado
+# ======================================================
+# Atributos
+for attr, metrics_w in user_metric_weights_by_attribute.items():
+    acc = pd.Series(np.zeros(len(df)), index=df.index, dtype=float)
+    for metric, w in metrics_w.items():
+        if metric not in df.columns:
+            missing_metrics.append(metric)
+        acc = acc + (safe_series(df, metric) * float(w))
     df[attr] = acc.round(2)
 
-# ======================================================
-# Pesos finales atributos
-# ======================================================
-st.divider()
-st.subheader("🎯 Pesos de atributos en el puntaje final")
-
-attr_weights = {}
-total_attr_weight = 0
-
-cols = st.columns(3)
-for i, attr in enumerate(ATRIBUTOS_METRICAS.keys()):
-    with cols[i % 3]:
-        w = st.number_input(attr, value=0.0, step=0.01, format="%.3f", key=f"final_{attr}")
-        attr_weights[attr] = w
-        total_attr_weight += w
-
-st.caption(f"Total pesos finales: **{total_attr_weight:.2f} {weight_status(total_attr_weight)}**")
-
-# ======================================================
 # Puntaje final
-# ======================================================
-puntaje = pd.Series(np.zeros(len(df)), index=df.index)
-for attr, w in attr_weights.items():
-    puntaje += safe_series(df, attr) * w
-
+puntaje = pd.Series(np.zeros(len(df)), index=df.index, dtype=float)
+for attr, w in user_attribute_weights_final.items():
+    puntaje = puntaje + (safe_series(df, attr) * float(w))
 df["Puntaje AAAJ"] = puntaje.round(2)
 
+if missing_metrics:
+    missing_unique = sorted(list(set(missing_metrics)))
+    st.warning(
+        "Faltan métricas en el Excel (se tomaron como 0 en el cálculo):\n\n- "
+        + "\n- ".join(missing_unique)
+    )
+
 # ======================================================
-# Output
+# Output dataframe visible
 # ======================================================
 st.divider()
-st.subheader("📋 Tabla final")
+st.subheader("📋 DataFrame con nuevos puntajes")
 
-base_cols = [
-    "Player", "Team", "Position", "Age", "Minutes played",
-    *ATRIBUTOS_METRICAS.keys(),
-    "Puntaje AAAJ",
+# Mantengo tu idea: base + atributos + puntaje
+columnas_base = [
+    "Player", "Team", "Team within selected timeframe", "Position", "Age", "Height",
+    "Birth country", "Passport country", "Contract expires", "Foot",
+    "Matches played", "Minutes played",
 ]
 
-cols_ok = [c for c in base_cols if c in df.columns]
+columnas_modelo = ATRIBUTOS_ORDEN + ["Puntaje AAAJ"]
+
+columnas = columnas_base + columnas_modelo
+
+cols_presentes = [c for c in columnas if c in df.columns]
+cols_faltantes = [c for c in columnas if c not in df.columns]
+
+if cols_faltantes:
+    st.info("Columnas no encontradas en el Excel (no se muestran): " + ", ".join(cols_faltantes))
 
 st.dataframe(
-    df[cols_ok].sort_values("Puntaje AAAJ", ascending=False),
+    df[cols_presentes].sort_values("Puntaje AAAJ", ascending=False),
     use_container_width=True
 )
