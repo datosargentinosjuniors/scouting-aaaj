@@ -211,7 +211,7 @@ if "Minutes played" not in df_raw.columns:
 
 df_raw["Minutos"] = pd.to_numeric(df_raw["Minutes played"], errors="coerce").fillna(0)
 
-with row1_c2:
+with row1_c3:
     min_minutos = int(df_raw["Minutos"].min()) if len(df_raw) else 0
     max_minutos = int(df_raw["Minutos"].max()) if len(df_raw) else 0
     minutos_min = st.slider(
@@ -221,7 +221,7 @@ with row1_c2:
         value=min_minutos,
     )
 
-with row1_c3:
+with row1_c2:
     ligas = sorted(df_raw["Liga"].dropna().astype(str).unique().tolist())
     liga_sel = st.selectbox("Liga", ligas, index=0 if ligas else None)
 
@@ -234,7 +234,6 @@ if liga_sel:
 # ======================================================
 # Presets (2do nivel - ancho completo)
 # ======================================================
-st.markdown("### Presets")
 
 presets = list_presets_for_position(puesto)
 preset_sel = st.selectbox(
